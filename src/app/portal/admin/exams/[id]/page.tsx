@@ -38,6 +38,8 @@ type Exam = {
   instructions: string | null
   has_theory: boolean
   total_marks: number | null
+  published_at: string | null
+  published_by: string | null
   created_at: string
 }
 
@@ -186,7 +188,6 @@ function ExamDetail({ examId, onBack }: { examId: string; onBack: () => void }) 
     }
     setExam(ex as Exam)
 
-    // Load class + subject in parallel
     const [clsRes, subRes, qRes] = await Promise.all([
       supabase.from('classes').select('*').eq('id', ex.class_id).maybeSingle(),
       supabase.from('subjects').select('*').eq('id', ex.subject_id).maybeSingle(),
@@ -218,7 +219,6 @@ function ExamDetail({ examId, onBack }: { examId: string; onBack: () => void }) 
   async function togglePublish() {
     if (!exam) return
     if (exam.status === 'draft') {
-      // Check: is another published exam in this slot?
       const { data: existing, error: chkErr } = await supabase
         .from('cbt_exams')
         .select('id, title')
@@ -240,7 +240,6 @@ function ExamDetail({ examId, onBack }: { examId: string; onBack: () => void }) 
         return
       }
 
-      // Verify at least 1 question
       if (questions.length === 0) {
         showToast('Add at least one question before publishing.', 'error')
         return
