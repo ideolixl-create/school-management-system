@@ -2,7 +2,7 @@
 
 /* ============================================================================
    THE TRUSTWORTHY SCHOOLS — STUDENT PORTAL
-   Tabs: My Report Card · My Exams
+   Tabs: My Report Card · My Exams · News
    CBT Engine with anti-cheat: auto-save, resume, tab-switch counter, timer
    ============================================================================ */
 
@@ -108,6 +108,21 @@ type Attempt = {
   total_marks: number | null
   final_score: number | null
   extended_minutes: number
+}
+
+type Announcement = {
+  id: string
+  title: string
+  body: string
+  audience: 'all' | 'students' | 'teachers' | 'class'
+  class_id: string | null
+  attachment_url: string | null
+  attachment_name: string | null
+  pinned: boolean
+  published_at: string
+  expires_at: string | null
+  created_by: string | null
+  created_at: string
 }
 
 type Toast = { id: number; msg: string; tone: 'success' | 'error' | 'info' | 'warn' }
@@ -261,8 +276,7 @@ export default function StudentPortal() {
   const [subjects, setSubjects] = useState<SubjectRow[]>([])
   const [booting, setBooting] = useState(true)
 
-  // Current active view — tab or fullscreen exam
-  const [view, setView] = useState<'report' | 'exams' | 'exam-take'>('report')
+  const [view, setView] = useState<'report' | 'exams' | 'exam-take' | 'news'>('report')
   const [activeExam, setActiveExam] = useState<CbtExam | null>(null)
 
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -272,7 +286,6 @@ export default function StudentPortal() {
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3800)
   }, [])
 
-  /* -------- Boot -------- */
   useEffect(() => {
     const stored = localStorage.getItem('loggedInStudent')
     if (!stored) { router.push('/login'); return }
@@ -346,9 +359,10 @@ export default function StudentPortal() {
         {/* TABS */}
         <div className="bg-white border-b border-slate-200 no-print">
           <div className="max-w-5xl mx-auto px-4 sm:px-6">
-            <div className="flex gap-1">
+            <div className="flex gap-1 overflow-x-auto">
               <TabBtn id="report" current={view} onClick={setView} label="📋 My Report Card" />
               <TabBtn id="exams" current={view} onClick={setView} label="🎯 My Exams" />
+              <TabBtn id="news" current={view} onClick={setView} label="📢 News" />
             </div>
           </div>
         </div>
@@ -366,6 +380,9 @@ export default function StudentPortal() {
                 showToast={showToast}
                 onStart={(exam) => { setActiveExam(exam); setView('exam-take') }}
               />
+            )}
+            {view === 'news' && (
+              <NewsTab student={student} showToast={showToast} />
             )}
           </div>
         </main>
@@ -393,9 +410,9 @@ export default function StudentPortal() {
 function TabBtn({
   id, current, onClick, label,
 }: {
-  id: 'report' | 'exams' | 'exam-take'
+  id: 'report' | 'exams' | 'exam-take' | 'news'
   current: string
-  onClick: (v: 'report' | 'exams' | 'exam-take') => void
+  onClick: (v: 'report' | 'exams' | 'exam-take' | 'news') => void
   label: string
 }) {
   const active = current === id
@@ -408,6 +425,120 @@ function TabBtn({
     >
       {label}
     </button>
+  )
+}
+
+/* ============================================================================
+   TAB: NEWS & ANNOUNCEMENTS
+   ============================================================================ */
+
+function NewsTab({
+  student, showToast,
+}: {
+  student: Student
+  showToast: (m: string, t?: Toast['tone']) => void
+}) {
+  const [announcements, setAnnouncements] = useState<Announcement[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      setLoading(true)
+
+      const { data, error } = await supabase
+        .from('announcements')
+        .select('*')
+        .in('audience', ['all', 'students', 'class'])
+        .order('pinned', { ascending: false })
+        .order('published_at', { ascending: false })
+
+      if (error) {
+        showToast('Could not load news.', 'error')
+        setLoading(false)
+        return
+      }
+
+      if (cancelled) return
+
+      const now = Date.now()
+      const filtered = (data || []).filter((a: any) => {
+        if (a.audience === 'class') {
+          if (!student.class_id || a.class_id !== student.class_id) return false
+        }
+        if (a.expires_at && new Date(a.expires_at).getTime() < now) return false
+        return true
+      })
+
+      setAnnouncements(filtered as Announcement[])
+      setLoading(false)
+    })()
+    return () => { cancelled = true }
+  }, [student.class_id, showToast])
+
+  if (loading) {
+    return <div className="text-center py-20 text-sm text-gray-500 italic">Loading news…</div>
+  }
+
+  if (announcements.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-12 text-center">
+        <p className="text-4xl mb-3">📭</p>
+        <h2 className="text-base font-bold text-[#4A2E1B]">No News Yet</h2>
+        <p className="text-xs text-gray-500 mt-2 max-w-md mx-auto">
+          There are no announcements for you right now. Check back later.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-5">
+        <h2 className="text-sm font-bold text-[#4A2E1B]">News &amp; Announcements</h2>
+        <p className="text-xs text-gray-500 mt-0.5">{announcements.length} item(s)</p>
+      </div>
+
+      {announcements.map((a) => (
+        <div key={a.id} className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-5">
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {a.pinned && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 ring-1 ring-amber-200">
+                  📌 Pinned
+                </span>
+              )}
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pink-50 text-pink-700 ring-1 ring-pink-200 uppercase">
+                {a.audience === 'class' ? 'Your Class' : a.audience === 'students' ? 'Students' : 'General'}
+              </span>
+            </div>
+            <p className="text-[10px] text-gray-400 whitespace-nowrap shrink-0">
+              {new Date(a.published_at).toLocaleDateString()}
+            </p>
+          </div>
+
+          <h3 className="text-sm font-bold text-[#4A2E1B]">{a.title}</h3>
+          <p className="text-xs text-gray-700 mt-2 whitespace-pre-wrap leading-relaxed">{a.body}</p>
+
+          {a.attachment_url && (
+            <a
+              href={a.attachment_url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 mt-3 bg-pink-50 text-pink-700 ring-1 ring-pink-200 px-3.5 py-2 rounded-lg text-xs font-bold hover:bg-pink-100"
+            >
+              📎 {a.attachment_name || 'Download attachment'}
+            </a>
+          )}
+
+          {a.expires_at && (
+            <p className="text-[10px] text-gray-400 mt-2 italic">
+              Expires {new Date(a.expires_at).toLocaleDateString()}
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -434,7 +565,6 @@ function ReportCardTab({
   const [totalStudentsInClass, setTotalStudentsInClass] = useState(0)
   const [loadingCard, setLoadingCard] = useState(false)
 
-  /* Load publications for this student's class */
   useEffect(() => {
     if (!student.class_id) { setLoading(false); return }
     ;(async () => {
@@ -450,7 +580,6 @@ function ReportCardTab({
     })()
   }, [student.class_id, showToast])
 
-  /* Load a specific report card */
   useEffect(() => {
     if (!selected || !student.class_id) return
     ;(async () => {
@@ -468,7 +597,6 @@ function ReportCardTab({
       setBehavioural((beh.data || null) as BehaviouralRow | null)
       setTotalStudentsInClass((classmates.data || []).length)
 
-      // Compute subject positions across classmates
       const classmateIds = (classmates.data || []).map((s: any) => s.id)
       if (classmateIds.length > 0) {
         const { data: allScores } = await supabase
@@ -477,7 +605,6 @@ function ReportCardTab({
           .eq('term', selected.term)
           .eq('session', selected.session)
 
-        // Per-subject rank
         const ranks: Record<string, number> = {}
         const subjectIds = Array.from(new Set((allScores || []).map((s: any) => s.subject_id)))
         subjectIds.forEach((sid) => {
@@ -490,7 +617,6 @@ function ReportCardTab({
         })
         setClassRanks(ranks)
 
-        // Overall position (by total across all subjects)
         const totals = new Map<string, number>()
         ;(allScores || []).forEach((s: any) => {
           const t = (s.test_score || 0) + (s.exam_score || 0)
@@ -552,7 +678,6 @@ function ReportCardTab({
     )
   }
 
-  /* -------------------- Single Card View -------------------- */
   if (selected) {
     return (
       <>
@@ -575,7 +700,6 @@ function ReportCardTab({
           <div className="text-center py-20 text-sm text-gray-500 italic">Loading report card…</div>
         ) : (
           <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-6 sm:p-8 print:shadow-none print:ring-0 print:rounded-none">
-            {/* School Header */}
             <div className="text-center pb-4 border-b-2 border-[#4A2E1B]">
               <img src={SCHOOL.logo} alt="Logo" className="w-16 h-16 mx-auto mb-2" />
               <h1 className="text-xl font-black text-[#4A2E1B] tracking-tight">{SCHOOL.name.toUpperCase()}</h1>
@@ -584,7 +708,6 @@ function ReportCardTab({
               <p className="text-[11px] text-gray-600">{SCHOOL.phones.join(' · ')} · {SCHOOL.email}</p>
             </div>
 
-            {/* Title */}
             <div className="text-center py-3">
               <h2 className="text-base font-black text-[#4A2E1B] uppercase tracking-wide">
                 {selected.term} Report Card
@@ -592,7 +715,6 @@ function ReportCardTab({
               <p className="text-[11px] text-gray-500">Academic Session: {selected.session}</p>
             </div>
 
-            {/* Student Info */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-4 border-y border-slate-200 text-xs">
               <InfoRow label="Name" value={student.full_name} />
               <InfoRow label="Admission Number" value={student.admission_number} />
@@ -605,7 +727,6 @@ function ReportCardTab({
               />
             </div>
 
-            {/* Subjects Table */}
             <div className="mt-4 overflow-x-auto">
               <table className="w-full text-left text-xs border border-slate-300">
                 <thead className="bg-[#4A2E1B] text-white">
@@ -662,7 +783,6 @@ function ReportCardTab({
               </table>
             </div>
 
-            {/* Behavioural Ratings */}
             {behavioural && (
               <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -704,7 +824,6 @@ function ReportCardTab({
               </div>
             )}
 
-            {/* Teacher's Comment */}
             {behavioural?.teacher_comment && (
               <div className="mt-5">
                 <h3 className="text-xs font-black uppercase tracking-wider text-[#4A2E1B] mb-2 border-b border-slate-200 pb-1">
@@ -716,7 +835,6 @@ function ReportCardTab({
               </div>
             )}
 
-            {/* Signatures */}
             <div className="mt-8 pt-6 border-t-2 border-dashed border-slate-300 grid grid-cols-1 sm:grid-cols-2 gap-6 text-xs">
               <div className="text-center">
                 <div className="border-t border-black w-48 mx-auto pt-1">Class Teacher</div>
@@ -735,7 +853,6 @@ function ReportCardTab({
     )
   }
 
-  /* -------------------- List of Report Cards -------------------- */
   return (
     <div className="space-y-3">
       <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-5">
@@ -810,13 +927,11 @@ function ExamsListTab({
       setExams(list)
       setAttempts((att.data || []) as Attempt[])
 
-      // Question counts
       if (list.length > 0) {
         const ids = list.map((e) => e.id)
         const { data: qs } = await supabase.from('cbt_questions').select('exam_id, type').in('exam_id', ids)
         const counts: Record<string, number> = {}
         ;(qs || []).forEach((q: any) => {
-          // Count only objective (theory is hidden in this version)
           if (q.type === 'objective') counts[q.exam_id] = (counts[q.exam_id] || 0) + 1
         })
         setQuestionCounts(counts)
@@ -829,7 +944,6 @@ function ExamsListTab({
   async function beginExam(exam: CbtExam) {
     setStarting(exam.id)
 
-    // Check for existing attempt
     const existing = attempts.find((a) => a.exam_id === exam.id)
 
     if (existing && existing.status !== 'in_progress') {
@@ -839,13 +953,11 @@ function ExamsListTab({
     }
 
     if (existing && existing.status === 'in_progress') {
-      // Resume
       showToast('Resuming your attempt…', 'info')
       setTimeout(() => { onStart(exam); setStarting(null) }, 400)
       return
     }
 
-    // Fresh start
     const { error } = await supabase.from('cbt_attempts').insert([{
       exam_id: exam.id,
       student_id: student.id,
@@ -1051,12 +1163,10 @@ function ExamRunner({
   const tabSwitchRef = useRef(0)
   const submittedRef = useRef(false)
 
-  /* -------- Load attempt + questions -------- */
   useEffect(() => {
     ;(async () => {
       setLoading(true)
 
-      // Load or create attempt
       let { data: att } = await supabase
         .from('cbt_attempts').select('*')
         .eq('exam_id', exam.id)
@@ -1082,7 +1192,6 @@ function ExamRunner({
       setAnswers((att as any).answers || {})
       tabSwitchRef.current = (att as any).tab_switch_count || 0
 
-      // Load objective questions only (theory is hidden in this version)
       const { data: qs } = await supabase
         .from('cbt_questions').select('*')
         .eq('exam_id', exam.id)
@@ -1095,7 +1204,6 @@ function ExamRunner({
         : rawList
       setQuestions(ordered)
 
-      // Compute time left
       const startedAt = new Date((att as any).started_at || Date.now()).getTime()
       const totalMs = (exam.duration_minutes + ((att as any).extended_minutes || 0)) * 60 * 1000
       const elapsed = Date.now() - startedAt
@@ -1106,7 +1214,6 @@ function ExamRunner({
     })()
   }, [exam.id, student.id, exam.duration_minutes, exam.shuffle_questions, showToast])
 
-  /* -------- Tab-switch tracking -------- */
   useEffect(() => {
     if (submittedRef.current) return
     const onVis = () => {
@@ -1121,7 +1228,6 @@ function ExamRunner({
     return () => document.removeEventListener('visibilitychange', onVis)
   }, [attempt])
 
-  /* -------- Timer -------- */
   useEffect(() => {
     if (submittedRef.current || loading) return
     if (secondsLeft <= 0) { void doSubmit(true); return }
@@ -1137,7 +1243,6 @@ function ExamRunner({
     return () => clearInterval(i)
   }, [loading, secondsLeft])
 
-  /* -------- Answer handler (auto-save) -------- */
   async function pickAnswer(questionId: string, choice: 'A' | 'B' | 'C' | 'D') {
     if (!attempt) return
     const next = { ...answers, [questionId]: choice }
@@ -1146,13 +1251,11 @@ function ExamRunner({
     if (error) showToast('Could not save answer — check your connection.', 'error')
   }
 
-  /* -------- Submit -------- */
   async function doSubmit(auto = false) {
     if (submittedRef.current || !attempt) return
     submittedRef.current = true
     setSubmitting(true)
 
-    // Compute objective score
     let score = 0
     let totalMarks = 0
     questions.forEach((q) => {
@@ -1242,7 +1345,6 @@ function ExamRunner({
   const answeredPct = (answeredCount / questions.length) * 100
   const isLowTime = secondsLeft <= 60
 
-  // Shuffle options deterministically per student
   const displayOptions = (() => {
     const opts = ([
       { key: 'A', text: q.option_a },
@@ -1257,7 +1359,6 @@ function ExamRunner({
   return (
     <>
       <div className="min-h-screen bg-slate-50 flex flex-col">
-        {/* EXAM HEADER */}
         <header className={`sticky top-0 z-30 text-white shadow-md border-b-4 ${isLowTime ? 'bg-red-700 border-red-900 animate-pulse' : 'bg-[#4A2E1B] border-pink-500'}`}>
           <div className="max-w-4xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
             <div className="min-w-0">
@@ -1273,14 +1374,12 @@ function ExamRunner({
               </p>
             </div>
           </div>
-          {/* Progress bar */}
           <div className="h-1 bg-black/20">
             <div className="h-full bg-pink-400 transition-all" style={{ width: `${answeredPct}%` }} />
           </div>
         </header>
 
         <main className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 py-6">
-          {/* Q counter + jump grid */}
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <p className="text-xs font-bold text-[#4A2E1B]">
               Question {currentIdx + 1} of {questions.length} · {answeredCount} answered
@@ -1306,7 +1405,6 @@ function ExamRunner({
             </div>
           </div>
 
-          {/* Question card */}
           <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-6 sm:p-8 select-none">
             <div className="flex items-start gap-3 mb-5">
               <span className="shrink-0 w-8 h-8 rounded-lg bg-[#4A2E1B] text-white text-xs font-bold flex items-center justify-center">
@@ -1342,7 +1440,6 @@ function ExamRunner({
             </div>
           </div>
 
-          {/* Navigation */}
           <div className="flex justify-between items-center gap-3 mt-5">
             <button
               onClick={() => setCurrentIdx((i) => Math.max(0, i - 1))}
@@ -1379,7 +1476,6 @@ function ExamRunner({
           </div>
         </main>
 
-        {/* TOASTS */}
         <div className="fixed bottom-6 right-6 z-[100] space-y-3 pointer-events-none">
           {toasts.map((t) => (
             <div key={t.id} className={`pointer-events-auto px-4 py-3 rounded-xl shadow-2xl text-white text-xs font-semibold max-w-sm border-l-4 ${
@@ -1391,7 +1487,6 @@ function ExamRunner({
           ))}
         </div>
 
-        {/* CONFIRM SUBMIT */}
         {confirmSubmit && (
           <div className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
