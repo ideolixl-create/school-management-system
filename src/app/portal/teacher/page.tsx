@@ -2,8 +2,7 @@
 
 /* ============================================================================
    THE TRUSTWORTHY SCHOOLS — TEACHER PORTAL
-   v2.0 — Aligned to current Supabase schema
-   Tabs: Attendance · Scores · Behavioural · CBT Results
+   v3.0 — Tabs: Attendance · Scores (edit/clear) · Behavioural · CBT · News
    ============================================================================ */
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
@@ -74,6 +73,21 @@ type Attempt = {
   duration_spent_seconds: number | null
   tab_switch_count: number
   submitted_at: string | null
+}
+
+type Announcement = {
+  id: string
+  title: string
+  body: string
+  audience: 'all' | 'students' | 'teachers' | 'class'
+  class_id: string | null
+  attachment_url: string | null
+  attachment_name: string | null
+  pinned: boolean
+  published_at: string
+  expires_at: string | null
+  created_by: string | null
+  created_at: string
 }
 
 type Toast = { id: number; msg: string; tone: 'success' | 'error' | 'info' | 'warn' }
@@ -190,7 +204,7 @@ export default function TeacherPortal() {
   const [classes, setClasses] = useState<ClassRow[]>([])
   const [subjects, setSubjects] = useState<SubjectRow[]>([])
   const [loadingMeta, setLoadingMeta] = useState(true)
-  const [activeTab, setActiveTab] = useState<'attendance' | 'scores' | 'behavioural' | 'cbt'>('attendance')
+  const [activeTab, setActiveTab] = useState<'attendance' | 'scores' | 'behavioural' | 'cbt' | 'news'>('attendance')
 
   const [currentTerm, setCurrentTerm] = useState<Term>('First Term')
   const [currentSession, setCurrentSession] = useState('2025/2026')
@@ -202,7 +216,6 @@ export default function TeacherPortal() {
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3800)
   }, [])
 
-  /* -------- Session boot -------- */
   useEffect(() => {
     const stored = localStorage.getItem('loggedInTeacher')
     if (!stored) { router.push('/login'); return }
@@ -216,7 +229,6 @@ export default function TeacherPortal() {
     setBooting(false)
   }, [router])
 
-  /* -------- Load classes + subjects -------- */
   useEffect(() => {
     if (!teacher) return
     ;(async () => {
@@ -233,14 +245,13 @@ export default function TeacherPortal() {
     })()
   }, [teacher, showToast])
 
-  /* -------- Derived: teacher's subjects -------- */
   const teacherSubjectIds = useMemo(() => {
     if (!teacher?.assigned_subjects || !subjects.length) return [] as string[]
     const names = teacher.assigned_subjects
       .split(',')
       .map((s) => normalizeName(s))
       .filter(Boolean)
-    const map = new Map<string, string>()  // normalized name → id
+    const map = new Map<string, string>()
     subjects.forEach((s) => map.set(normalizeName(s.name), s.id))
     const ids: string[] = []
     names.forEach((n) => {
@@ -255,14 +266,11 @@ export default function TeacherPortal() {
     [subjects, teacherSubjectIds]
   )
 
-  /* -------- Derived: teacher's visible classes -------- */
   const visibleClasses = useMemo(() => {
     if (!teacher) return [] as ClassRow[]
-    // Class or both → only their assigned class
     if ((teacher.role_type === 'class' || teacher.role_type === 'both') && teacher.assigned_class_id) {
       return classes.filter((c) => c.id === teacher.assigned_class_id)
     }
-    // Subject-only → all classes (they teach subject across classes)
     return classes
   }, [teacher, classes])
 
@@ -272,10 +280,8 @@ export default function TeacherPortal() {
   }
 
   if (booting) return null
-
   if (!teacher) return null
 
-  // Setup incomplete screen
   if (!teacher.assigned_class_id && !teacher.assigned_subjects) {
     return (
       <>
@@ -299,7 +305,6 @@ export default function TeacherPortal() {
     <>
       <GlobalStyles />
       <div className="min-h-screen bg-slate-50 text-gray-800 flex flex-col">
-        {/* HEADER */}
         <header className="bg-[#4A2E1B] text-white shadow-md border-b-2 border-pink-500 sticky top-0 z-30">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex justify-between items-center gap-4">
             <div className="flex items-center gap-3 min-w-0">
@@ -320,7 +325,6 @@ export default function TeacherPortal() {
           </div>
         </header>
 
-        {/* SESSION BAR */}
         <div className="bg-white border-b border-slate-200">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap gap-3 items-center justify-between">
             <div className="flex flex-wrap gap-3 items-center">
@@ -353,7 +357,6 @@ export default function TeacherPortal() {
           </div>
         </div>
 
-        {/* TABS */}
         <div className="bg-white border-b border-slate-200">
           <div className="max-w-6xl mx-auto px-4 sm:px-6">
             <div className="flex gap-1 overflow-x-auto">
@@ -361,11 +364,11 @@ export default function TeacherPortal() {
               <TabBtn id="scores" current={activeTab} onClick={setActiveTab} label="Score Entry" />
               <TabBtn id="behavioural" current={activeTab} onClick={setActiveTab} label="Behavioural Ratings" />
               <TabBtn id="cbt" current={activeTab} onClick={setActiveTab} label="CBT Results" />
+              <TabBtn id="news" current={activeTab} onClick={setActiveTab} label="📢 News" />
             </div>
           </div>
         </div>
 
-        {/* CONTENT */}
         <main className="flex-1">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
             {loadingMeta ? (
@@ -400,12 +403,14 @@ export default function TeacherPortal() {
                     showToast={showToast}
                   />
                 )}
+                {activeTab === 'news' && (
+                  <NewsTab teacher={teacher} showToast={showToast} />
+                )}
               </>
             )}
           </div>
         </main>
 
-        {/* TOASTS */}
         <div className="fixed bottom-6 right-6 z-[100] space-y-3 pointer-events-none">
           {toasts.map((t) => (
             <div key={t.id} className={`pointer-events-auto px-4 py-3 rounded-xl shadow-2xl text-white text-xs font-semibold max-w-sm border-l-4 ${
@@ -428,9 +433,9 @@ export default function TeacherPortal() {
 function TabBtn({
   id, current, onClick, label,
 }: {
-  id: 'attendance' | 'scores' | 'behavioural' | 'cbt'
+  id: 'attendance' | 'scores' | 'behavioural' | 'cbt' | 'news'
   current: string
-  onClick: (v: 'attendance' | 'scores' | 'behavioural' | 'cbt') => void
+  onClick: (v: 'attendance' | 'scores' | 'behavioural' | 'cbt' | 'news') => void
   label: string
 }) {
   const active = current === id
@@ -443,6 +448,117 @@ function TabBtn({
     >
       {label}
     </button>
+  )
+}
+
+/* ============================================================================
+   TAB: NEWS
+   ============================================================================ */
+
+function NewsTab({
+  teacher, showToast,
+}: {
+  teacher: Teacher
+  showToast: (m: string, t?: Toast['tone']) => void
+}) {
+  const [announcements, setAnnouncements] = useState<Announcement[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      setLoading(true)
+
+      const { data, error } = await supabase
+        .from('announcements')
+        .select('*')
+        .in('audience', ['all', 'teachers'])
+        .order('pinned', { ascending: false })
+        .order('published_at', { ascending: false })
+
+      if (error) {
+        showToast('Could not load news.', 'error')
+        setLoading(false)
+        return
+      }
+
+      if (cancelled) return
+
+      const now = Date.now()
+      const filtered = (data || []).filter((a: any) => {
+        if (a.expires_at && new Date(a.expires_at).getTime() < now) return false
+        return true
+      })
+
+      setAnnouncements(filtered as Announcement[])
+      setLoading(false)
+    })()
+    return () => { cancelled = true }
+  }, [teacher.id, showToast])
+
+  if (loading) {
+    return <div className="text-center py-20 text-sm text-gray-500 italic">Loading news…</div>
+  }
+
+  if (announcements.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-12 text-center">
+        <p className="text-4xl mb-3">📭</p>
+        <h2 className="text-base font-bold text-[#4A2E1B]">No News Yet</h2>
+        <p className="text-xs text-gray-500 mt-2 max-w-md mx-auto">
+          There are no announcements for teachers right now. Check back later.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-5">
+        <h2 className="text-sm font-bold text-[#4A2E1B]">News &amp; Announcements</h2>
+        <p className="text-xs text-gray-500 mt-0.5">{announcements.length} item(s)</p>
+      </div>
+
+      {announcements.map((a) => (
+        <div key={a.id} className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-5">
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {a.pinned && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 ring-1 ring-amber-200">
+                  📌 Pinned
+                </span>
+              )}
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 ring-1 ring-blue-200 uppercase">
+                {a.audience === 'teachers' ? 'Teachers' : 'General'}
+              </span>
+            </div>
+            <p className="text-[10px] text-gray-400 whitespace-nowrap shrink-0">
+              {new Date(a.published_at).toLocaleDateString()}
+            </p>
+          </div>
+
+          <h3 className="text-sm font-bold text-[#4A2E1B]">{a.title}</h3>
+          <p className="text-xs text-gray-700 mt-2 whitespace-pre-wrap leading-relaxed">{a.body}</p>
+
+          {a.attachment_url && (
+            <a
+              href={a.attachment_url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 mt-3 bg-pink-50 text-pink-700 ring-1 ring-pink-200 px-3.5 py-2 rounded-lg text-xs font-bold hover:bg-pink-100"
+            >
+              📎 {a.attachment_name || 'Download attachment'}
+            </a>
+          )}
+
+          {a.expires_at && (
+            <p className="text-[10px] text-gray-400 mt-2 italic">
+              Expires {new Date(a.expires_at).toLocaleDateString()}
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -469,7 +585,6 @@ function AttendanceTab({
     unmatched: string[]
   } | null>(null)
 
-  // Auto-pick first class if only one visible
   useEffect(() => {
     if (!classId && classes.length === 1) setClassId(classes[0].id)
   }, [classes, classId])
@@ -482,8 +597,7 @@ function AttendanceTab({
   async function load() {
     setLoading(true)
     const { data: stds, error: stErr } = await supabase
-      .from('students')
-      .select('*')
+      .from('students').select('*')
       .eq('class_id', classId)
       .order('full_name')
 
@@ -491,8 +605,7 @@ function AttendanceTab({
     setStudents((stds || []) as Student[])
 
     const { data: atts } = await supabase
-      .from('attendance')
-      .select('*')
+      .from('attendance').select('*')
       .eq('class_id', classId)
       .eq('date', date)
 
@@ -754,7 +867,7 @@ function AttendanceTab({
 }
 
 /* ============================================================================
-   TAB: SCORES
+   TAB: SCORES (with Edit mode + Clear)
    ============================================================================ */
 
 function ScoresTab({
@@ -770,8 +883,11 @@ function ScoresTab({
   const [subjectId, setSubjectId] = useState('')
   const [students, setStudents] = useState<Student[]>([])
   const [scores, setScores] = useState<Record<string, { ca: string; exam: string }>>({})
+  const [originalScores, setOriginalScores] = useState<Record<string, { ca: string; exam: string }>>({})
+  const [editMode, setEditMode] = useState(false)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [clearing, setClearing] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
   const [bulkPreview, setBulkPreview] = useState<{
     valid: { student_id: string; admission_no: string; name: string; ca: number; exam: number }[]
@@ -779,7 +895,6 @@ function ScoresTab({
     unmatched: string[]
   } | null>(null)
 
-  // Auto-pick first class / subject
   useEffect(() => {
     if (!classId && classes.length === 1) setClassId(classes[0].id)
   }, [classes, classId])
@@ -794,6 +909,8 @@ function ScoresTab({
 
   async function load() {
     setLoading(true)
+    setEditMode(false) // reset edit state on reload
+
     const { data: stds, error: stErr } = await supabase
       .from('students')
       .select('*')
@@ -820,10 +937,12 @@ function ScoresTab({
       }
     })
     setScores(map)
+    setOriginalScores(JSON.parse(JSON.stringify(map)))
     setLoading(false)
   }
 
   function setScore(id: string, field: 'ca' | 'exam', value: string) {
+    if (!editMode) return
     setScores((prev) => ({
       ...prev,
       [id]: {
@@ -832,6 +951,12 @@ function ScoresTab({
         [field]: value,
       },
     }))
+  }
+
+  function cancelEdit() {
+    setScores(JSON.parse(JSON.stringify(originalScores)))
+    setEditMode(false)
+    showToast('Changes discarded.', 'info')
   }
 
   async function save() {
@@ -870,8 +995,40 @@ function ScoresTab({
 
     setSaving(false)
     if (error) { showToast(`Save failed: ${error.message}`, 'error'); return }
+    setOriginalScores(JSON.parse(JSON.stringify(scores)))
+    setEditMode(false)
     setLastSaved(new Date())
     showToast(`Scores saved for ${rows.length} students.`)
+  }
+
+  async function clearAllScores() {
+    if (!classId || !subjectId) return
+    const subjName = teacherSubjects.find((s) => s.id === subjectId)?.name || 'Subject'
+    const clsName = classes.find((c) => c.id === classId)?.name || 'Class'
+
+    if (!window.confirm(
+      `Clear ALL scores for ${clsName} · ${subjName} · ${currentTerm} · ${currentSession}?\n\nThis will delete all entries. Cannot be undone.`
+    )) return
+
+    setClearing(true)
+    const { error } = await supabase
+      .from('scores')
+      .delete()
+      .eq('class_id', classId)
+      .eq('subject_id', subjectId)
+      .eq('term', currentTerm)
+      .eq('session', currentSession)
+
+    setClearing(false)
+    if (error) { showToast(`Clear failed: ${error.message}`, 'error'); return }
+
+    // Reset local state
+    const empty: Record<string, { ca: string; exam: string }> = {}
+    students.forEach((s) => { empty[s.id] = { ca: '', exam: '' } })
+    setScores(empty)
+    setOriginalScores(JSON.parse(JSON.stringify(empty)))
+    setEditMode(false)
+    showToast('All scores cleared. You can now re-enter.', 'warn')
   }
 
   function downloadSample() {
@@ -963,9 +1120,18 @@ function ScoresTab({
       next[v.student_id] = { ca: String(v.ca), exam: String(v.exam) }
     })
     setScores(next)
-    showToast(`Applied ${bulkPreview.valid.length} record(s). Click Save to persist.`)
+    setEditMode(true)   // auto-unlock for review
+    showToast(`Applied ${bulkPreview.valid.length} record(s). Review and click Save.`)
     setBulkPreview(null)
   }
+
+  const hasScores = useMemo(() => {
+    return Object.values(scores).some((s) => s.ca !== '' || s.exam !== '')
+  }, [scores])
+
+  const hasChanges = useMemo(() => {
+    return JSON.stringify(scores) !== JSON.stringify(originalScores)
+  }, [scores, originalScores])
 
   return (
     <div className="space-y-5">
@@ -1024,10 +1190,21 @@ function ScoresTab({
 
       {classId && subjectId && (
         <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-bold text-[#4A2E1B]">
-              {teacherSubjects.find((s) => s.id === subjectId)?.name} — CA ({SCORE_MAX.ca}) + Exam ({SCORE_MAX.exam})
-            </h3>
+          <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <h3 className="text-sm font-bold text-[#4A2E1B]">
+                {teacherSubjects.find((s) => s.id === subjectId)?.name} — CA ({SCORE_MAX.ca}) + Exam ({SCORE_MAX.exam})
+              </h3>
+              {editMode ? (
+                <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 ring-1 ring-amber-200 uppercase">
+                  ✏️ Editing
+                </span>
+              ) : (
+                <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-100 text-gray-700 ring-1 ring-slate-200 uppercase">
+                  🔒 Locked
+                </span>
+              )}
+            </div>
             <p className="text-[11px] text-gray-500">Total &amp; grade calculated by the broadsheet.</p>
           </div>
 
@@ -1064,16 +1241,26 @@ function ScoresTab({
                           <input
                             type="number" min={0} max={SCORE_MAX.ca}
                             value={entry.ca}
+                            disabled={!editMode}
                             onChange={(e) => setScore(s.id, 'ca', e.target.value)}
-                            className={`w-20 border rounded-lg p-2 text-center text-sm ${caBad ? 'border-red-400 bg-red-50' : 'border-pink-200'}`}
+                            className={`w-20 border rounded-lg p-2 text-center text-sm ${
+                              !editMode ? 'bg-slate-100 text-gray-600 cursor-not-allowed' :
+                              caBad ? 'border-red-400 bg-red-50' :
+                              'border-pink-200'
+                            }`}
                           />
                         </td>
                         <td className="px-4 py-3 text-center">
                           <input
                             type="number" min={0} max={SCORE_MAX.exam}
                             value={entry.exam}
+                            disabled={!editMode}
                             onChange={(e) => setScore(s.id, 'exam', e.target.value)}
-                            className={`w-20 border rounded-lg p-2 text-center text-sm ${exBad ? 'border-red-400 bg-red-50' : 'border-pink-200'}`}
+                            className={`w-20 border rounded-lg p-2 text-center text-sm ${
+                              !editMode ? 'bg-slate-100 text-gray-600 cursor-not-allowed' :
+                              exBad ? 'border-red-400 bg-red-50' :
+                              'border-pink-200'
+                            }`}
                           />
                         </td>
                         <td className="px-4 py-3 text-center font-black text-[#4A2E1B]">{total}</td>
@@ -1086,15 +1273,49 @@ function ScoresTab({
             </div>
           )}
 
-          <div className="px-5 py-4 border-t border-slate-100 flex items-center justify-between gap-3">
-            <p className="text-xs text-gray-500">{lastSaved && `Last saved: ${lastSaved.toLocaleTimeString()}`}</p>
-            <button
-              onClick={save}
-              disabled={saving || students.length === 0}
-              className="bg-[#4A2E1B] text-white px-6 py-2.5 rounded-xl text-xs font-bold hover:bg-[#382213] disabled:opacity-50"
-            >
-              {saving ? 'Saving…' : 'Save Scores'}
-            </button>
+          <div className="px-5 py-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-gray-500">
+              {lastSaved && `Last saved: ${lastSaved.toLocaleTimeString()}`}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {editMode ? (
+                <>
+                  <button
+                    onClick={cancelEdit}
+                    disabled={saving}
+                    className="bg-slate-200 text-gray-800 px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-slate-300 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={save}
+                    disabled={saving || students.length === 0 || !hasChanges}
+                    className="bg-[#4A2E1B] text-white px-6 py-2.5 rounded-xl text-xs font-bold hover:bg-[#382213] disabled:opacity-50"
+                  >
+                    {saving ? 'Saving…' : 'Save Scores'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  {hasScores && (
+                    <button
+                      onClick={clearAllScores}
+                      disabled={clearing}
+                      className="bg-red-600 text-white px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-red-700 disabled:opacity-50 inline-flex items-center gap-2"
+                    >
+                      🗑️ {clearing ? 'Clearing…' : 'Clear Scores'}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setEditMode(true)}
+                    disabled={students.length === 0}
+                    className="bg-pink-600 text-white px-6 py-2.5 rounded-xl text-xs font-bold hover:bg-pink-700 disabled:opacity-50 inline-flex items-center gap-2"
+                  >
+                    🔓 {hasScores ? 'Edit Scores' : 'Enter Scores'}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
