@@ -2,8 +2,7 @@
 
 /* ============================================================================
    THE TRUSTWORTHY SCHOOLS — ADMIN CONTROL CENTER
-   v4.0 — Complete: students, teachers, CBT exams, live monitor, theory marking,
-          broadsheets, report card publishing
+   v5.0 — News/Announcements with PDF + Clear Broadsheet
    ============================================================================ */
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
@@ -28,7 +27,7 @@ const SCHOOL = {
   website: 'www.thetrustworthyschools.com',
   logo: 'https://raw.githubusercontent.com/ideolixlearninghub/Trustworthy_schoolsexam/main/The%20trustworthy%20school%20logo.jpg',
   session: '2025/2026',
-  version: '4.0',
+  version: '5.0',
 }
 
 const TERMS = ['First Term', 'Second Term', 'Third Term'] as const
@@ -145,6 +144,21 @@ type ReportCardPub = {
   term: string
   session: string
   published_at: string
+}
+
+type Announcement = {
+  id: string
+  title: string
+  body: string
+  audience: 'all' | 'students' | 'teachers' | 'class'
+  class_id: string | null
+  attachment_url: string | null
+  attachment_name: string | null
+  pinned: boolean
+  published_at: string
+  expires_at: string | null
+  created_by: string | null
+  created_at: string
 }
 
 type AuditEntry = { ts: number; action: string; detail: string }
@@ -402,7 +416,7 @@ function PasswordGate({ onUnlock }: { onUnlock: () => void }) {
 type Tab =
   | 'dashboard' | 'students' | 'teachers'
   | 'questions' | 'exams' | 'live' | 'submissions'
-  | 'broadsheet' | 'audit' | 'settings'
+  | 'broadsheet' | 'news' | 'audit' | 'settings'
 
 const TAB_TITLES: Record<Tab, string> = {
   dashboard: 'Dashboard',
@@ -413,6 +427,7 @@ const TAB_TITLES: Record<Tab, string> = {
   live: 'Live Monitor',
   submissions: 'Submissions',
   broadsheet: 'Broadsheets & Report Cards',
+  news: 'News & Announcements',
   audit: 'Audit Log',
   settings: 'Settings',
 }
@@ -429,6 +444,7 @@ function Console({ onLogout }: { onLogout: () => void }) {
   const [questions, setQuestions] = useState<Question[]>([])
   const [scores, setScores] = useState<ScoreRow[]>([])
   const [reportCardPub, setReportCardPub] = useState<ReportCardPub[]>([])
+  const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [audit, setAudit] = useState<AuditEntry[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -451,7 +467,7 @@ function Console({ onLogout }: { onLogout: () => void }) {
 
   const loadAll = useCallback(async () => {
     setLoading(true)
-    const [c, s, st, t, ex, q, rp] = await Promise.all([
+    const [c, s, st, t, ex, q, rp, an] = await Promise.all([
       supabase.from('classes').select('*').order('name'),
       supabase.from('subjects').select('*').order('name'),
       supabase.from('students').select('*').order('full_name'),
@@ -459,6 +475,7 @@ function Console({ onLogout }: { onLogout: () => void }) {
       supabase.from('cbt_exams').select('*').order('created_at', { ascending: false }),
       supabase.from('cbt_questions').select('*').order('created_at'),
       supabase.from('report_card_publications').select('*'),
+      supabase.from('announcements').select('*').order('pinned', { ascending: false }).order('published_at', { ascending: false }),
     ])
     if (c.error) showToast('Failed to load classes.', 'error')
     if (st.error) showToast('Failed to load students.', 'error')
@@ -470,6 +487,7 @@ function Console({ onLogout }: { onLogout: () => void }) {
     setExams(ex.data || [])
     setQuestions(q.data || [])
     setReportCardPub((rp.data || []) as ReportCardPub[])
+    setAnnouncements((an.data || []) as Announcement[])
     setLoading(false)
   }, [showToast])
 
@@ -514,6 +532,8 @@ function Console({ onLogout }: { onLogout: () => void }) {
             <NavBtn tab="submissions" current={tab} onClick={setTab} icon="check" label="Submissions" />
             <NavGroup label="Results" />
             <NavBtn tab="broadsheet" current={tab} onClick={setTab} icon="table" label="Broadsheets" />
+            <NavGroup label="Communication" />
+            <NavBtn tab="news" current={tab} onClick={setTab} icon="activity" label="News & Announcements" />
             <NavGroup label="System" />
             <NavBtn tab="audit" current={tab} onClick={setTab} icon="clock" label="Audit Log" />
             <NavBtn tab="settings" current={tab} onClick={setTab} icon="settings" label="Settings" />
@@ -573,6 +593,16 @@ function Console({ onLogout }: { onLogout: () => void }) {
                     scores={scores}
                     setScores={setScores}
                     reportCardPub={reportCardPub}
+                    refresh={loadAll}
+                    showToast={showToast}
+                    logAction={logAction}
+                    askConfirm={askConfirm}
+                  />
+                )}
+                {tab === 'news' && (
+                  <NewsTab
+                    announcements={announcements}
+                    classes={classes}
                     refresh={loadAll}
                     showToast={showToast}
                     logAction={logAction}
@@ -1138,6 +1168,7 @@ function EditStudentModal({
   )
 }
 
+
 /* ============================================================================
    TAB: TEACHERS
    ============================================================================ */
@@ -1477,7 +1508,7 @@ function QuestionsTab({
 }
 
 /* ============================================================================
-   TAB: EXAMS (LIST + INLINE DETAIL)
+   TAB: EXAMS
    ============================================================================ */
 
 function ExamsTab({
@@ -1502,7 +1533,6 @@ function ExamsTab({
         classes={classes}
         subjects={subjects}
         questions={questions.filter((q) => q.exam_id === selectedExam.id)}
-        allQuestions={questions}
         onBack={() => setSelectedExamId(null)}
         refresh={refresh}
         showToast={showToast}
@@ -1751,7 +1781,7 @@ function ExamList({
   )
 }
 
-/* -------------------- EXAM DETAIL (INLINE) -------------------- */
+/* -------------------- EXAM DETAIL -------------------- */
 
 function ExamDetail({
   exam, classes, subjects, questions, onBack, refresh, showToast, logAction, askConfirm,
@@ -1760,7 +1790,6 @@ function ExamDetail({
   classes: ClassRow[]
   subjects: SubjectRow[]
   questions: Question[]
-  allQuestions: Question[]
   onBack: () => void
   refresh: () => void
   showToast: (m: string, t?: Toast['tone']) => void
@@ -2391,6 +2420,7 @@ function SubmissionsTab({
     </div>
   )
 }
+
 /* ============================================================================
    TAB: LIVE MONITOR
    ============================================================================ */
@@ -2894,6 +2924,7 @@ function TheoryMarkingPanel({
   )
 }
 
+
 /* ============================================================================
    TAB: BROADSHEET + REPORT CARD PUBLISH
    ============================================================================ */
@@ -3131,6 +3162,39 @@ function BroadsheetTab({
     )
   }
 
+  async function clearBroadsheet() {
+    askConfirm(
+      'Clear All Scores?',
+      `This will delete ALL subject scores for ${classById[selectedClass]} · ${selectedTerm} · ${session}. You can re-upload a corrected file after. Cannot be undone.`,
+      async () => {
+        const { error: scErr } = await supabase
+          .from('scores')
+          .delete()
+          .eq('class_id', selectedClass)
+          .eq('term', selectedTerm)
+          .eq('session', session)
+
+        if (scErr) { showToast(`Clear failed: ${scErr.message}`, 'error'); return }
+
+        const { error: pubErr } = await supabase
+          .from('report_card_publications')
+          .delete()
+          .eq('class_id', selectedClass)
+          .eq('term', selectedTerm)
+          .eq('session', session)
+
+        if (pubErr) { showToast(`Cleared scores but couldn't unpublish report cards: ${pubErr.message}`, 'warn') }
+
+        showToast('Broadsheet cleared. You can now re-upload.')
+        logAction('Broadsheet cleared', `${classById[selectedClass]} · ${selectedTerm} · ${session}`)
+
+        const { data: fresh } = await supabase.from('scores').select('*')
+        setScores(fresh || [])
+        refresh()
+      }
+    )
+  }
+
   return (
     <div className="space-y-5">
       <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-5">
@@ -3177,6 +3241,15 @@ function BroadsheetTab({
                 Unpublish Report Cards
               </button>
             </>
+          )}
+
+          {selectedClass && filteredScores.length > 0 && (
+            <button
+              onClick={clearBroadsheet}
+              className="text-xs font-bold bg-red-600 text-white px-4 py-2.5 rounded-xl hover:bg-red-700 inline-flex items-center gap-2"
+            >
+              🗑️ Clear All Scores
+            </button>
           )}
         </div>
       </div>
@@ -3241,6 +3314,332 @@ function BroadsheetTab({
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+/* ============================================================================
+   TAB: NEWS & ANNOUNCEMENTS
+   ============================================================================ */
+
+function NewsTab({
+  announcements, classes, refresh, showToast, logAction, askConfirm,
+}: {
+  announcements: Announcement[]
+  classes: ClassRow[]
+  refresh: () => void
+  showToast: (m: string, t?: Toast['tone']) => void
+  logAction: (a: string, d?: string) => void
+  askConfirm: (t: string, m: string, cb: () => void) => void
+}) {
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({
+    title: '',
+    body: '',
+    audience: 'all' as 'all' | 'students' | 'teachers' | 'class',
+    class_id: '',
+    pinned: false,
+    expires_at: '',
+  })
+  const [file, setFile] = useState<File | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const classById = useMemo(() => Object.fromEntries(classes.map((c) => [c.id, c.name])), [classes])
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    if (!f) return
+    if (f.type !== 'application/pdf') {
+      showToast('Only PDF files are allowed.', 'error')
+      e.target.value = ''
+      return
+    }
+    if (f.size > 5 * 1024 * 1024) {
+      showToast('File too large. Max 5 MB.', 'error')
+      e.target.value = ''
+      return
+    }
+    setFile(f)
+  }
+
+  async function submitAnnouncement(e: React.FormEvent) {
+    e.preventDefault()
+    if (!form.title.trim()) { showToast('Title is required.', 'error'); return }
+    if (!form.body.trim()) { showToast('Body is required.', 'error'); return }
+    if (form.audience === 'class' && !form.class_id) {
+      showToast('Please choose a class.', 'error'); return
+    }
+
+    setSaving(true)
+    let attachment_url: string | null = null
+    let attachment_name: string | null = null
+
+    if (file) {
+      const ts = Date.now()
+      const safeName = file.name.replace(/[^A-Za-z0-9._-]/g, '_')
+      const path = `${ts}_${safeName}`
+      const { error: upErr } = await supabase.storage
+        .from('announcements')
+        .upload(path, file, { contentType: 'application/pdf', upsert: false })
+
+      if (upErr) {
+        showToast(`Upload failed: ${upErr.message}`, 'error')
+        setSaving(false)
+        return
+      }
+
+      const { data: urlData } = supabase.storage.from('announcements').getPublicUrl(path)
+      attachment_url = urlData.publicUrl
+      attachment_name = file.name
+    }
+
+    const payload = {
+      title: form.title.trim(),
+      body: form.body.trim(),
+      audience: form.audience,
+      class_id: form.audience === 'class' ? form.class_id : null,
+      attachment_url,
+      attachment_name,
+      pinned: form.pinned,
+      expires_at: form.expires_at ? new Date(form.expires_at).toISOString() : null,
+    }
+
+    const { error } = await supabase.from('announcements').insert([payload])
+    setSaving(false)
+
+    if (error) { showToast(`Save failed: ${error.message}`, 'error'); return }
+
+    showToast('Announcement published.')
+    logAction('Announcement published', `${form.title} · ${form.audience}`)
+    setForm({ title: '', body: '', audience: 'all', class_id: '', pinned: false, expires_at: '' })
+    setFile(null)
+    setShowForm(false)
+    refresh()
+  }
+
+  function deleteAnnouncement(a: Announcement) {
+    askConfirm('Delete Announcement?', `Remove "${a.title}"? Students will no longer see it.`, async () => {
+      if (a.attachment_url) {
+        const path = a.attachment_url.split('/').pop()
+        if (path) {
+          await supabase.storage.from('announcements').remove([path])
+        }
+      }
+      const { error } = await supabase.from('announcements').delete().eq('id', a.id)
+      if (error) { showToast(`Delete failed: ${error.message}`, 'error'); return }
+      showToast('Announcement removed.', 'warn')
+      logAction('Announcement deleted', a.title)
+      refresh()
+    })
+  }
+
+  async function togglePin(a: Announcement) {
+    const { error } = await supabase.from('announcements').update({ pinned: !a.pinned }).eq('id', a.id)
+    if (error) { showToast(`Update failed: ${error.message}`, 'error'); return }
+    showToast(a.pinned ? 'Unpinned.' : 'Pinned to top.', 'info')
+    refresh()
+  }
+
+  const AUDIENCE_LABEL: Record<Announcement['audience'], string> = {
+    all: 'Everyone',
+    students: 'All Students',
+    teachers: 'All Teachers',
+    class: 'Specific Class',
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 overflow-hidden">
+        <div className="px-6 py-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-[#4A2E1B]">News &amp; Announcements</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Post news to students and teachers. Attach a PDF (school calendar, newsletter, etc.).
+            </p>
+          </div>
+          <button
+            onClick={() => setShowForm((v) => !v)}
+            className="text-xs font-bold bg-pink-600 text-white px-4 py-2.5 rounded-xl hover:bg-pink-700"
+          >
+            {showForm ? 'Close' : '+ New Announcement'}
+          </button>
+        </div>
+
+        {showForm && (
+          <form onSubmit={submitAnnouncement} className="p-5 bg-slate-50 border-b border-slate-100 space-y-4">
+            <FormField label="Title" required>
+              <input
+                required
+                value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.target.value })}
+                placeholder="e.g. Mid-Term Break Announcement"
+                className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none"
+              />
+            </FormField>
+
+            <FormField label="Message" required>
+              <textarea
+                required
+                rows={4}
+                value={form.body}
+                onChange={(e) => setForm({ ...form, body: e.target.value })}
+                placeholder="Write your announcement here…"
+                className="w-full text-sm p-3 bg-white border border-pink-200 rounded-xl outline-none resize-none"
+              />
+            </FormField>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <FormField label="Send To" required>
+                <select
+                  value={form.audience}
+                  onChange={(e) => setForm({ ...form, audience: e.target.value as any })}
+                  className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none"
+                >
+                  <option value="all">Everyone</option>
+                  <option value="students">All Students</option>
+                  <option value="teachers">All Teachers</option>
+                  <option value="class">Specific Class</option>
+                </select>
+              </FormField>
+
+              {form.audience === 'class' && (
+                <FormField label="Class" required>
+                  <select
+                    required
+                    value={form.class_id}
+                    onChange={(e) => setForm({ ...form, class_id: e.target.value })}
+                    className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none"
+                  >
+                    <option value="">-- Choose Class --</option>
+                    {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </FormField>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <FormField label="Attach PDF (optional)">
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  onChange={handleFileChange}
+                  className="w-full text-xs file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#4A2E1B] file:text-white hover:file:bg-black bg-white border border-pink-200 rounded-xl p-1"
+                />
+                {file && (
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    Selected: {file.name} ({(file.size / 1024).toFixed(0)} KB)
+                  </p>
+                )}
+              </FormField>
+
+              <FormField label="Expires (optional)">
+                <input
+                  type="datetime-local"
+                  value={form.expires_at}
+                  onChange={(e) => setForm({ ...form, expires_at: e.target.value })}
+                  className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none"
+                />
+                <p className="text-[10px] text-gray-500 mt-1">Leave blank to keep forever</p>
+              </FormField>
+            </div>
+
+            <label className="flex items-center gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={form.pinned}
+                onChange={(e) => setForm({ ...form, pinned: e.target.checked })}
+                className="w-5 h-5 rounded border-pink-300 text-pink-600 focus:ring-pink-500"
+              />
+              <span className="text-sm font-medium text-[#4A2E1B]">📌 Pin to top (important)</span>
+            </label>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => { setShowForm(false); setFile(null) }}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-gray-700 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-pink-600 hover:bg-pink-700 disabled:opacity-50"
+              >
+                {saving ? 'Publishing…' : 'Publish Announcement'}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 overflow-hidden">
+        <div className="px-6 py-5 border-b border-slate-100">
+          <h2 className="font-semibold text-[#4A2E1B]">Published Announcements</h2>
+          <p className="text-xs text-gray-500 mt-0.5">{announcements.length} total</p>
+        </div>
+
+        {announcements.length === 0 ? (
+          <div className="p-12 text-center text-xs text-gray-400 italic">
+            No announcements yet. Click "+ New Announcement" to publish one.
+          </div>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {announcements.map((a) => (
+              <li key={a.id} className="p-5 hover:bg-pink-50/30">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      {a.pinned && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 ring-1 ring-amber-200">📌 Pinned</span>}
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ring-1 uppercase ${
+                        a.audience === 'all' ? 'bg-slate-100 text-gray-700 ring-slate-200' :
+                        a.audience === 'students' ? 'bg-pink-50 text-pink-700 ring-pink-200' :
+                        a.audience === 'teachers' ? 'bg-blue-50 text-blue-700 ring-blue-200' :
+                        'bg-emerald-50 text-emerald-700 ring-emerald-200'
+                      }`}>
+                        {a.audience === 'class' ? classById[a.class_id || ''] || 'Class' : AUDIENCE_LABEL[a.audience]}
+                      </span>
+                    </div>
+                    <h3 className="text-sm font-bold text-[#4A2E1B]">{a.title}</h3>
+                    <p className="text-xs text-gray-700 mt-1 whitespace-pre-wrap">{a.body}</p>
+
+                    {a.attachment_url && (
+                      <a
+                        href={a.attachment_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 mt-2 text-xs font-bold text-pink-700 hover:text-pink-800 underline"
+                      >
+                        📎 {a.attachment_name || 'Attachment'}
+                      </a>
+                    )}
+
+                    <p className="text-[10px] text-gray-400 mt-2">
+                      Published {new Date(a.published_at).toLocaleString()}
+                      {a.expires_at && ` · Expires ${new Date(a.expires_at).toLocaleString()}`}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <button
+                      onClick={() => togglePin(a)}
+                      className="text-[11px] font-bold text-amber-700 hover:text-amber-900"
+                    >
+                      {a.pinned ? 'Unpin' : 'Pin'}
+                    </button>
+                    <button
+                      onClick={() => deleteAnnouncement(a)}
+                      className="text-[11px] font-bold text-red-600 hover:text-red-700"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   )
 }
