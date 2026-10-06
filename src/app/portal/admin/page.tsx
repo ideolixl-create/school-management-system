@@ -355,7 +355,7 @@ async function deletePassportByUrl(url: string | null): Promise<void> {
 }
 
 /* ============================================================================
-   GLOBAL STYLES
+   GLOBAL STYLES — READABILITY HARDENED
    ============================================================================ */
 
 function GlobalStyles() {
@@ -363,6 +363,7 @@ function GlobalStyles() {
     <style
       dangerouslySetInnerHTML={{
         __html: `
+          /* Force readable text on all form controls */
           input, select, textarea, option {
             color: #1A2332 !important;
             background-color: #ffffff;
@@ -375,6 +376,19 @@ function GlobalStyles() {
           input:-webkit-autofill {
             -webkit-text-fill-color: #1A2332 !important;
           }
+
+          /* Ensure text never washes out over coloured/row hover backgrounds */
+          table th, table td {
+            color: #1A2332;
+            text-shadow: none;
+          }
+          table thead th {
+            color: #ffffff;
+          }
+          tr:hover td {
+            text-shadow: none;
+          }
+          .tabular-nums { font-variant-numeric: tabular-nums; }
         `,
       }}
     />
@@ -450,7 +464,7 @@ function PasswordGate({ onUnlock }: { onUnlock: () => void }) {
                   value={pass}
                   onChange={(e) => { setPass(e.target.value); setError('') }}
                   autoFocus required placeholder="Enter admin password"
-                  className="w-full border p-3 pr-14 rounded-lg text-sm bg-white border-pink-300 focus:ring-2 focus:ring-pink-400 outline-none"
+                  className="w-full border p-3 pr-14 rounded-lg text-sm bg-white border-pink-300 focus:ring-2 focus:ring-pink-400 outline-none text-[#1A2332]"
                 />
                 <button type="button" onClick={() => setShow((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#4A2E1B]">
                   {show ? 'Hide' : 'Show'}
@@ -545,7 +559,6 @@ function Console({ onLogout }: { onLogout: () => void }) {
     setSubjects(s.data || [])
     setStudents((st.data || []) as Student[])
 
-    // Attach class_ids to teachers from teacher_classes
     const tcMap = new Map<string, string[]>()
     ;(tc.data || []).forEach((row: any) => {
       const arr = tcMap.get(row.teacher_id) || []
@@ -861,7 +874,6 @@ function StudentsTab({
 
     setSaving(true)
 
-    // Upload passport first (if provided)
     let passport_url: string | null = null
     if (formPhoto) {
       const { url, error } = await uploadPassport(formPhoto, form.admission_number.trim())
@@ -894,11 +906,9 @@ function StudentsTab({
   }
 
   async function saveEdit(updated: Student, newPhoto: File | null) {
-    // Handle photo upload/replacement
     let passport_url = updated.passport_url
 
     if (newPhoto) {
-      // Delete the old one if exists
       if (updated.passport_url) await deletePassportByUrl(updated.passport_url)
       const { url, error } = await uploadPassport(newPhoto, updated.admission_number)
       if (error || !url) { showToast(`Photo upload failed: ${error}`, 'error'); return false }
@@ -1123,7 +1133,6 @@ function StudentsTab({
             <h2 className="font-semibold text-[#4A2E1B]">Register Single Student</h2>
           </div>
           <form onSubmit={addStudent} className="p-5 space-y-3.5">
-            {/* Passport preview + upload */}
             <div className="flex items-center gap-4">
               <div className="w-20 h-24 rounded-xl bg-slate-100 ring-1 ring-slate-200 flex items-center justify-center overflow-hidden shrink-0">
                 {formPhotoPreview ? (
@@ -1149,32 +1158,32 @@ function StudentsTab({
             </div>
 
             <FormField label="Admission Number" required>
-              <input required value={form.admission_number} onChange={(e) => setForm({ ...form, admission_number: e.target.value })} placeholder="TTS/2026/050" className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl font-mono outline-none" />
+              <input required value={form.admission_number} onChange={(e) => setForm({ ...form, admission_number: e.target.value })} placeholder="TTS/2026/050" className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl font-mono outline-none text-[#1A2332]" />
             </FormField>
             <FormField label="Full Name" required>
-              <input required value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} placeholder="Yusuf Amina Bello" className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+              <input required value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} placeholder="Yusuf Amina Bello" className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
             </FormField>
             <FormField label="Class" required>
-              <select required value={form.class_id} onChange={(e) => setForm({ ...form, class_id: e.target.value })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none">
+              <select required value={form.class_id} onChange={(e) => setForm({ ...form, class_id: e.target.value })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]">
                 <option value="">-- Choose Class --</option>
                 {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </FormField>
             <div className="grid grid-cols-2 gap-3">
               <FormField label="Gender" required>
-                <select value={form.gender} onChange={(e) => setForm({ ...form, gender: e.target.value as 'Male' | 'Female' })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none">
+                <select value={form.gender} onChange={(e) => setForm({ ...form, gender: e.target.value as 'Male' | 'Female' })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]">
                   <option>Male</option><option>Female</option>
                 </select>
               </FormField>
               <FormField label="Date of Birth" required>
-                <input type="date" max={todayIso()} required value={form.date_of_birth} onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+                <input type="date" max={todayIso()} required value={form.date_of_birth} onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
               </FormField>
             </div>
             <FormField label="Portal Password" required>
-              <input required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="e.g. YUSUF2026" className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+              <input required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="e.g. YUSUF2026" className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
             </FormField>
             <FormField label="Parent Phone">
-              <input value={form.parent_phone} onChange={(e) => setForm({ ...form, parent_phone: e.target.value })} placeholder="08030000000" className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+              <input value={form.parent_phone} onChange={(e) => setForm({ ...form, parent_phone: e.target.value })} placeholder="08030000000" className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
             </FormField>
             <button type="submit" disabled={saving} className="w-full bg-pink-600 hover:bg-pink-700 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50">
               {saving ? 'Saving…' : 'Register Student'}
@@ -1190,30 +1199,30 @@ function StudentsTab({
           <div className="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row gap-2">
             <div className="relative flex-grow">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><Icon name="search" /></span>
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="w-full text-sm pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl outline-none" />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="w-full text-sm pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl outline-none text-[#1A2332]" />
             </div>
-            <select value={filterClass} onChange={(e) => setFilterClass(e.target.value)} className="text-sm px-3 py-2 bg-white border border-slate-200 rounded-xl outline-none">
+            <select value={filterClass} onChange={(e) => setFilterClass(e.target.value)} className="text-sm px-3 py-2 bg-white border border-slate-200 rounded-xl outline-none text-[#1A2332]">
               <option value="">All Classes</option>
               {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
           <div className="overflow-x-auto max-h-[520px]">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-gray-700 text-[11px] uppercase tracking-wider sticky top-0">
+              <thead className="bg-[#4A2E1B] text-white text-[11px] uppercase tracking-wider sticky top-0">
                 <tr>
-                  <th className="px-3 py-3 w-14">Photo</th>
-                  <th className="px-4 py-3">Adm No</th>
-                  <th className="px-4 py-3">Full Name</th>
-                  <th className="px-4 py-3">Class</th>
-                  <th className="px-4 py-3 text-center">Age</th>
-                  <th className="px-4 py-3">Gender</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
+                  <th className="px-3 py-3 w-14 text-white">Photo</th>
+                  <th className="px-4 py-3 text-white">Adm No</th>
+                  <th className="px-4 py-3 text-white">Full Name</th>
+                  <th className="px-4 py-3 text-white">Class</th>
+                  <th className="px-4 py-3 text-center text-white">Age</th>
+                  <th className="px-4 py-3 text-white">Gender</th>
+                  <th className="px-4 py-3 text-right text-white">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 bg-white">
                 {filtered.map((s) => (
-                  <tr key={s.id} className="hover:bg-pink-50/50">
-                    <td className="px-3 py-2">
+                  <tr key={s.id} className="hover:bg-pink-50/40">
+                    <td className="px-3 py-2 bg-white">
                       {s.passport_url ? (
                         <img src={s.passport_url} alt={s.full_name} className="w-10 h-12 object-cover rounded-lg ring-1 ring-slate-200" />
                       ) : (
@@ -1222,19 +1231,19 @@ function StudentsTab({
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3 font-mono text-pink-700">{s.admission_number}</td>
-                    <td className="px-4 py-3 font-medium text-[#4A2E1B]">{s.full_name}</td>
-                    <td className="px-4 py-3">{classById[s.class_id || ''] || '—'}</td>
-                    <td className="px-4 py-3 text-center">{ageFromDob(s.date_of_birth) ?? '—'}</td>
-                    <td className="px-4 py-3">{s.gender || '—'}</td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap">
-                      <button onClick={() => setEditTarget(s)} className="text-blue-600 hover:text-blue-700 font-semibold text-[11px] mr-3">Edit</button>
-                      <button onClick={() => resetPassword(s)} className="text-amber-600 hover:text-amber-700 font-semibold text-[11px] mr-3">Reset PW</button>
-                      <button onClick={() => removeStudent(s)} className="text-red-600 hover:text-red-700 font-semibold text-[11px]">Remove</button>
+                    <td className="px-4 py-3 font-mono text-pink-700 font-semibold bg-white">{s.admission_number}</td>
+                    <td className="px-4 py-3 font-bold text-[#4A2E1B] bg-white">{s.full_name}</td>
+                    <td className="px-4 py-3 text-[#1A2332] bg-white">{classById[s.class_id || ''] || '—'}</td>
+                    <td className="px-4 py-3 text-center text-[#1A2332] bg-white">{ageFromDob(s.date_of_birth) ?? '—'}</td>
+                    <td className="px-4 py-3 text-[#1A2332] bg-white">{s.gender || '—'}</td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap bg-white">
+                      <button onClick={() => setEditTarget(s)} className="text-blue-700 hover:text-blue-800 font-bold text-[11px] mr-3">Edit</button>
+                      <button onClick={() => resetPassword(s)} className="text-amber-700 hover:text-amber-800 font-bold text-[11px] mr-3">Reset PW</button>
+                      <button onClick={() => removeStudent(s)} className="text-red-700 hover:text-red-800 font-bold text-[11px]">Remove</button>
                     </td>
                   </tr>
                 ))}
-                {filtered.length === 0 && <tr><td colSpan={7} className="px-4 py-12 text-center text-xs text-gray-400 italic">No students found.</td></tr>}
+                {filtered.length === 0 && <tr><td colSpan={7} className="px-4 py-12 text-center text-xs text-gray-500 italic bg-white">No students found.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -1276,7 +1285,8 @@ function EditStudentModal({
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!draft.full_name.trim() || !draft.class_id) return
-    if (draft.date_of_birth && !isValidDate(draft.date_of_birth)) return    setSaving(true)
+    if (draft.date_of_birth && !isValidDate(draft.date_of_birth)) return
+    setSaving(true)
     const ok = await onSave({ ...draft, full_name: toTitleCase(draft.full_name.trim()) }, newPhoto)
     setSaving(false)
     if (ok) onClose()
@@ -1290,10 +1300,9 @@ function EditStudentModal({
             <h3 className="font-bold text-[#4A2E1B] text-base">Edit Student</h3>
             <p className="text-[11px] text-gray-500 font-mono mt-0.5">{student.admission_number} (locked)</p>
           </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-gray-500">✕</button>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-gray-600">✕</button>
         </div>
         <form onSubmit={submit} className="p-6 space-y-4">
-          {/* Photo */}
           <div className="flex items-center gap-4">
             <div className="w-24 h-28 rounded-xl bg-slate-100 ring-1 ring-slate-200 flex items-center justify-center overflow-hidden shrink-0">
               {photoPreview ? (
@@ -1316,34 +1325,34 @@ function EditStudentModal({
           </div>
 
           <FormField label="Full Name" required>
-            <input required value={draft.full_name} onChange={(e) => setDraft({ ...draft, full_name: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+            <input required value={draft.full_name} onChange={(e) => setDraft({ ...draft, full_name: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
           </FormField>
           <div className="grid grid-cols-2 gap-3">
             <FormField label="Class" required>
-              <select value={draft.class_id || ''} onChange={(e) => setDraft({ ...draft, class_id: e.target.value })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none">
+              <select value={draft.class_id || ''} onChange={(e) => setDraft({ ...draft, class_id: e.target.value })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]">
                 <option value="">-- Choose --</option>
                 {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </FormField>
             <FormField label="Gender" required>
-              <select value={draft.gender || 'Male'} onChange={(e) => setDraft({ ...draft, gender: e.target.value as 'Male' | 'Female' })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none">
+              <select value={draft.gender || 'Male'} onChange={(e) => setDraft({ ...draft, gender: e.target.value as 'Male' | 'Female' })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]">
                 <option>Male</option><option>Female</option>
               </select>
             </FormField>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <FormField label="Date of Birth" required>
-              <input type="date" max={todayIso()} required value={draft.date_of_birth || ''} onChange={(e) => setDraft({ ...draft, date_of_birth: e.target.value })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+              <input type="date" max={todayIso()} required value={draft.date_of_birth || ''} onChange={(e) => setDraft({ ...draft, date_of_birth: e.target.value })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
             </FormField>
             <FormField label="Computed Age">
-              <input value={ageFromDob(draft.date_of_birth) ?? '—'} disabled className="w-full text-sm px-3 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-gray-600" />
+              <input value={ageFromDob(draft.date_of_birth) ?? '—'} disabled className="w-full text-sm px-3 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-gray-700" />
             </FormField>
           </div>
           <FormField label="Parent Phone">
-            <input value={draft.parent_phone || ''} onChange={(e) => setDraft({ ...draft, parent_phone: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+            <input value={draft.parent_phone || ''} onChange={(e) => setDraft({ ...draft, parent_phone: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
           </FormField>
           <FormField label="Password" required>
-            <input required value={draft.password || ''} onChange={(e) => setDraft({ ...draft, password: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl font-mono outline-none" />
+            <input required value={draft.password || ''} onChange={(e) => setDraft({ ...draft, password: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl font-mono outline-none text-[#1A2332]" />
           </FormField>
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
             <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl text-xs font-bold text-gray-700 hover:bg-slate-100">Cancel</button>
@@ -1418,7 +1427,6 @@ function TeachersTab({
       return
     }
 
-    // Insert class assignments (multi-class)
     if (form.role_type !== 'subject' && form.assigned_class_ids.length > 0) {
       const rows = form.assigned_class_ids.map((cid, i) => ({
         teacher_id: inserted.id,
@@ -1456,7 +1464,6 @@ function TeachersTab({
 
     if (error) { showToast(`Update failed: ${error.message}`, 'error'); return false }
 
-    // Refresh teacher_classes: delete all, insert new
     const { error: delErr } = await supabase.from('teacher_classes').delete().eq('teacher_id', updated.id)
     if (delErr) { showToast(`Teacher updated but class links failed: ${delErr.message}`, 'warn'); refresh(); return true }
 
@@ -1511,22 +1518,22 @@ function TeachersTab({
         </div>
         <form onSubmit={addTeacher} className="p-5 space-y-3.5">
           <FormField label="Staff ID" required>
-            <input required value={form.staff_id} onChange={(e) => setForm({ ...form, staff_id: e.target.value })} placeholder="TTS/TCH/009" className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl font-mono outline-none" />
+            <input required value={form.staff_id} onChange={(e) => setForm({ ...form, staff_id: e.target.value })} placeholder="TTS/TCH/009" className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl font-mono outline-none text-[#1A2332]" />
           </FormField>
           <FormField label="Full Name" required>
-            <input required value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} placeholder="Dr. Aliyu Ibrahim" className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+            <input required value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} placeholder="Dr. Aliyu Ibrahim" className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
           </FormField>
           <FormField label="Email" required>
-            <input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+            <input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
           </FormField>
           <FormField label="Password" required>
-            <input required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+            <input required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
           </FormField>
           <FormField label="Phone">
-            <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+            <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
           </FormField>
           <FormField label="Role Type" required>
-            <select value={form.role_type} onChange={(e) => setForm({ ...form, role_type: e.target.value as any })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none">
+            <select value={form.role_type} onChange={(e) => setForm({ ...form, role_type: e.target.value as any })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]">
               <option value="subject">Subject Teacher</option>
               <option value="class">Class Teacher</option>
               <option value="both">Class &amp; Subject Teacher</option>
@@ -1550,7 +1557,7 @@ function TeachersTab({
                         onChange={() => toggleClass(c.id)}
                         className="w-4 h-4 rounded border-pink-300 text-pink-600 focus:ring-pink-500"
                       />
-                      <span className="text-sm text-[#4A2E1B] flex-1">{c.name}</span>
+                      <span className="text-sm text-[#1A2332] flex-1">{c.name}</span>
                       {idx === 0 && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-pink-100 text-pink-700">PRIMARY</span>}
                     </label>
                   )
@@ -1561,7 +1568,7 @@ function TeachersTab({
 
           {form.role_type !== 'class' && (
             <FormField label="Assigned Subjects (comma-separated)">
-              <input value={form.assigned_subjects} onChange={(e) => setForm({ ...form, assigned_subjects: e.target.value })} placeholder="Mathematics, Physics" className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+              <input value={form.assigned_subjects} onChange={(e) => setForm({ ...form, assigned_subjects: e.target.value })} placeholder="Mathematics, Physics" className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
             </FormField>
           )}
 
@@ -1578,25 +1585,25 @@ function TeachersTab({
         </div>
         <div className="overflow-x-auto max-h-[620px]">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 text-gray-700 text-[11px] uppercase tracking-wider">
+            <thead className="bg-[#4A2E1B] text-white text-[11px] uppercase tracking-wider">
               <tr>
-                <th className="px-4 py-3">Staff ID</th>
-                <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3">Role</th>
-                <th className="px-4 py-3">Classes</th>
-                <th className="px-4 py-3">Subjects</th>
-                <th className="px-4 py-3 text-right">Actions</th>
+                <th className="px-4 py-3 text-white">Staff ID</th>
+                <th className="px-4 py-3 text-white">Name</th>
+                <th className="px-4 py-3 text-white">Role</th>
+                <th className="px-4 py-3 text-white">Classes</th>
+                <th className="px-4 py-3 text-white">Subjects</th>
+                <th className="px-4 py-3 text-right text-white">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 bg-white">
               {teachers.map((t) => {
                 const classNames = (t.class_ids || []).map((id) => classById[id]).filter(Boolean)
                 return (
-                  <tr key={t.id} className="hover:bg-pink-50/50">
-                    <td className="px-4 py-3 font-mono text-pink-700">{t.staff_id}</td>
-                    <td className="px-4 py-3 font-medium text-[#4A2E1B]">{t.full_name}</td>
-                    <td className="px-4 py-3"><span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-pink-50 text-pink-700 ring-1 ring-pink-200 uppercase">{ROLE_LABEL[t.role_type]}</span></td>
-                    <td className="px-4 py-3 text-gray-700">
+                  <tr key={t.id} className="hover:bg-pink-50/40">
+                    <td className="px-4 py-3 font-mono text-pink-700 font-semibold bg-white">{t.staff_id}</td>
+                    <td className="px-4 py-3 font-bold text-[#4A2E1B] bg-white">{t.full_name}</td>
+                    <td className="px-4 py-3 bg-white"><span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-pink-50 text-pink-700 ring-1 ring-pink-200 uppercase">{ROLE_LABEL[t.role_type]}</span></td>
+                    <td className="px-4 py-3 text-[#1A2332] bg-white">
                       {classNames.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
                           {classNames.map((n, i) => (
@@ -1607,16 +1614,16 @@ function TeachersTab({
                         <span className="text-gray-400">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-gray-700">{t.assigned_subjects || '—'}</td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap">
-                      <button onClick={() => setEditTarget(t)} className="text-blue-600 hover:text-blue-700 font-semibold text-[11px] mr-3">Edit</button>
-                      <button onClick={() => resetPassword(t)} className="text-amber-600 hover:text-amber-700 font-semibold text-[11px] mr-3">Reset PW</button>
-                      <button onClick={() => removeTeacher(t)} className="text-red-600 hover:text-red-700 font-semibold text-[11px]">Remove</button>
+                    <td className="px-4 py-3 text-[#1A2332] bg-white">{t.assigned_subjects || '—'}</td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap bg-white">
+                      <button onClick={() => setEditTarget(t)} className="text-blue-700 hover:text-blue-800 font-bold text-[11px] mr-3">Edit</button>
+                      <button onClick={() => resetPassword(t)} className="text-amber-700 hover:text-amber-800 font-bold text-[11px] mr-3">Reset PW</button>
+                      <button onClick={() => removeTeacher(t)} className="text-red-700 hover:text-red-800 font-bold text-[11px]">Remove</button>
                     </td>
                   </tr>
                 )
               })}
-              {teachers.length === 0 && <tr><td colSpan={6} className="px-4 py-12 text-center text-xs text-gray-400 italic">No teachers registered yet.</td></tr>}
+              {teachers.length === 0 && <tr><td colSpan={6} className="px-4 py-12 text-center text-xs text-gray-500 italic bg-white">No teachers registered yet.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -1668,26 +1675,26 @@ function EditTeacherModal({
             <h3 className="font-bold text-[#4A2E1B] text-base">Edit Teacher</h3>
             <p className="text-[11px] text-gray-500 font-mono mt-0.5">{teacher.staff_id} (locked)</p>
           </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-gray-500">✕</button>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-gray-600">✕</button>
         </div>
         <form onSubmit={submit} className="p-6 space-y-4">
           <FormField label="Full Name" required>
-            <input required value={draft.full_name} onChange={(e) => setDraft({ ...draft, full_name: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+            <input required value={draft.full_name} onChange={(e) => setDraft({ ...draft, full_name: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
           </FormField>
           <FormField label="Email" required>
-            <input type="email" required value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+            <input type="email" required value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
           </FormField>
           <FormField label="Phone">
-            <input value={draft.phone || ''} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+            <input value={draft.phone || ''} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
           </FormField>
           <FormField label="Password" required>
-            <input required value={draft.password || ''} onChange={(e) => setDraft({ ...draft, password: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl font-mono outline-none" />
+            <input required value={draft.password || ''} onChange={(e) => setDraft({ ...draft, password: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl font-mono outline-none text-[#1A2332]" />
           </FormField>
           <FormField label="Role Type" required>
             <select
               value={draft.role_type}
               onChange={(e) => setDraft({ ...draft, role_type: e.target.value as Teacher['role_type'] })}
-              className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none"
+              className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]"
             >
               <option value="subject">Subject Teacher</option>
               <option value="class">Class Teacher</option>
@@ -1710,7 +1717,7 @@ function EditTeacherModal({
                         onChange={() => toggleClass(c.id)}
                         className="w-4 h-4 rounded border-pink-300 text-pink-600 focus:ring-pink-500"
                       />
-                      <span className="text-sm text-[#4A2E1B] flex-1">{c.name}</span>
+                      <span className="text-sm text-[#1A2332] flex-1">{c.name}</span>
                       {idx === 0 && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-pink-100 text-pink-700">PRIMARY</span>}
                     </label>
                   )
@@ -1720,7 +1727,7 @@ function EditTeacherModal({
           )}
           {draft.role_type !== 'class' && (
             <FormField label="Assigned Subjects (comma-separated)">
-              <input value={draft.assigned_subjects || ''} onChange={(e) => setDraft({ ...draft, assigned_subjects: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+              <input value={draft.assigned_subjects || ''} onChange={(e) => setDraft({ ...draft, assigned_subjects: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
             </FormField>
           )}
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
@@ -1765,7 +1772,7 @@ function QuestionsTab({
         <p className="text-xs text-gray-500 mt-0.5">{questions.length} question(s) across {exams.length} exam(s)</p>
       </div>
       <div className="p-5 space-y-3 max-h-[700px] overflow-y-auto">
-        {questions.length === 0 && <div className="text-center py-12 text-xs text-gray-400 italic">No questions yet. Add them from the Exams tab.</div>}
+        {questions.length === 0 && <div className="text-center py-12 text-xs text-gray-500 italic">No questions yet. Add them from the Exams tab.</div>}
         {questions.slice(0, 200).map((q) => {
           const ex = examById[q.exam_id]
           return (
@@ -1776,11 +1783,11 @@ function QuestionsTab({
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${q.type === 'theory' ? 'bg-purple-50 text-purple-700 ring-1 ring-purple-200' : 'bg-slate-100 text-gray-700 ring-1 ring-slate-200'}`}>
                     {q.type}
                   </span>
-                  <span className="text-[10px] text-gray-500">{q.marks} mark{q.marks === 1 ? '' : 's'}</span>
+                  <span className="text-[10px] text-gray-600">{q.marks} mark{q.marks === 1 ? '' : 's'}</span>
                 </div>
-                <button onClick={() => removeQuestion(q)} className="text-red-500 hover:text-red-700 text-[11px] font-semibold">Delete</button>
+                <button onClick={() => removeQuestion(q)} className="text-red-700 hover:text-red-800 text-[11px] font-bold">Delete</button>
               </div>
-              <p className="text-xs text-[#4A2E1B] font-medium mb-2">{q.question_text}</p>
+              <p className="text-xs text-[#1A2332] font-medium mb-2">{q.question_text}</p>
               {q.type === 'objective' && (
                 <ul className="grid grid-cols-2 gap-1.5 text-[11px]">
                   {(['A', 'B', 'C', 'D'] as const).map((k) => {
@@ -1788,7 +1795,7 @@ function QuestionsTab({
                     if (!txt) return null
                     const isCorrect = q.correct_answer === k
                     return (
-                      <li key={k} className={`px-2.5 py-1.5 rounded-lg ${isCorrect ? 'bg-emerald-50 ring-1 ring-emerald-200 text-emerald-800 font-semibold' : 'bg-slate-50 ring-1 ring-slate-200 text-gray-600'}`}>
+                      <li key={k} className={`px-2.5 py-1.5 rounded-lg ${isCorrect ? 'bg-emerald-50 ring-1 ring-emerald-200 text-emerald-800 font-semibold' : 'bg-slate-50 ring-1 ring-slate-200 text-gray-700'}`}>
                         {k}. {txt} {isCorrect ? '✓' : ''}
                       </li>
                     )
@@ -1959,17 +1966,17 @@ function ExamList({
         {showCreate && (
           <form onSubmit={createExam} className="p-5 bg-slate-50 border-b border-slate-100 space-y-4">
             <FormField label="Title" required>
-              <input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Mid-Term Chemistry Test" className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+              <input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Mid-Term Chemistry Test" className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
             </FormField>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FormField label="Class" required>
-                <select required value={form.class_id} onChange={(e) => setForm({ ...form, class_id: e.target.value })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none">
+                <select required value={form.class_id} onChange={(e) => setForm({ ...form, class_id: e.target.value })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]">
                   <option value="">-- Choose --</option>
                   {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </FormField>
               <FormField label="Subject" required>
-                <select required value={form.subject_id} onChange={(e) => setForm({ ...form, subject_id: e.target.value })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none">
+                <select required value={form.subject_id} onChange={(e) => setForm({ ...form, subject_id: e.target.value })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]">
                   <option value="">-- Choose --</option>
                   {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
@@ -1977,19 +1984,19 @@ function ExamList({
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <FormField label="Duration (min)">
-                <input type="number" min={1} value={form.duration_minutes} onChange={(e) => setForm({ ...form, duration_minutes: Number(e.target.value) })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+                <input type="number" min={1} value={form.duration_minutes} onChange={(e) => setForm({ ...form, duration_minutes: Number(e.target.value) })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
               </FormField>
               <FormField label="Term">
-                <select value={form.term} onChange={(e) => setForm({ ...form, term: e.target.value as Term })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none">
+                <select value={form.term} onChange={(e) => setForm({ ...form, term: e.target.value as Term })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]">
                   {TERMS.map((t) => <option key={t}>{t}</option>)}
                 </select>
               </FormField>
               <FormField label="Session">
-                <input value={form.session} onChange={(e) => setForm({ ...form, session: e.target.value })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+                <input value={form.session} onChange={(e) => setForm({ ...form, session: e.target.value })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
               </FormField>
             </div>
             <FormField label="Initial Status">
-              <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as any })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none">
+              <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as any })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]">
                 <option value="draft">Save as Draft</option>
                 <option value="published">Publish Immediately</option>
               </select>
@@ -2007,13 +2014,13 @@ function ExamList({
         <div className="px-6 py-4 border-b border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><Icon name="search" /></span>
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title…" className="w-full text-sm pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl outline-none" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title…" className="w-full text-sm pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl outline-none text-[#1A2332]" />
           </div>
-          <select value={filterClass} onChange={(e) => setFilterClass(e.target.value)} className="text-sm px-3 py-2 bg-white border border-slate-200 rounded-xl outline-none">
+          <select value={filterClass} onChange={(e) => setFilterClass(e.target.value)} className="text-sm px-3 py-2 bg-white border border-slate-200 rounded-xl outline-none text-[#1A2332]">
             <option value="">All Classes</option>
             {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="text-sm px-3 py-2 bg-white border border-slate-200 rounded-xl outline-none">
+          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="text-sm px-3 py-2 bg-white border border-slate-200 rounded-xl outline-none text-[#1A2332]">
             <option value="">All Statuses</option>
             <option value="draft">Draft</option>
             <option value="scheduled">Scheduled</option>
@@ -2024,20 +2031,20 @@ function ExamList({
 
         <div className="overflow-x-auto max-h-[640px]">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 text-gray-700 text-[11px] uppercase tracking-wider sticky top-0">
+            <thead className="bg-[#4A2E1B] text-white text-[11px] uppercase tracking-wider sticky top-0">
               <tr>
-                <th className="px-4 py-3">Title</th>
-                <th className="px-4 py-3">Class</th>
-                <th className="px-4 py-3">Subject</th>
-                <th className="px-4 py-3 text-center">Qs</th>
-                <th className="px-4 py-3 text-center">Marks</th>
-                <th className="px-4 py-3 text-center">Duration</th>
-                <th className="px-4 py-3 text-center">Status</th>
-                <th className="px-4 py-3 text-right">Actions</th>
+                <th className="px-4 py-3 text-white">Title</th>
+                <th className="px-4 py-3 text-white">Class</th>
+                <th className="px-4 py-3 text-white">Subject</th>
+                <th className="px-4 py-3 text-center text-white">Qs</th>
+                <th className="px-4 py-3 text-center text-white">Marks</th>
+                <th className="px-4 py-3 text-center text-white">Duration</th>
+                <th className="px-4 py-3 text-center text-white">Status</th>
+                <th className="px-4 py-3 text-right text-white">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filtered.length === 0 && <tr><td colSpan={8} className="px-4 py-12 text-center text-xs text-gray-400 italic">No exams match your filters.</td></tr>}
+            <tbody className="divide-y divide-slate-100 bg-white">
+              {filtered.length === 0 && <tr><td colSpan={8} className="px-4 py-12 text-center text-xs text-gray-500 italic bg-white">No exams match your filters.</td></tr>}
               {filtered.map((ex) => {
                 const status = examDerivedStatus(ex)
                 const tone =
@@ -2046,23 +2053,23 @@ function ExamList({
                   status === 'closed' ? 'bg-slate-100 text-gray-700 ring-slate-200' :
                   'bg-amber-50 text-amber-700 ring-amber-200'
                 return (
-                  <tr key={ex.id} className="hover:bg-pink-50/50">
-                    <td className="px-4 py-3 font-medium text-[#4A2E1B]">
-                      <button onClick={() => onOpen(ex.id)} className="text-left hover:text-pink-600 hover:underline">
+                  <tr key={ex.id} className="hover:bg-pink-50/40">
+                    <td className="px-4 py-3 font-bold text-[#4A2E1B] bg-white">
+                      <button onClick={() => onOpen(ex.id)} className="text-left hover:text-pink-700 hover:underline">
                         {ex.title}
                       </button>
                     </td>
-                    <td className="px-4 py-3 text-gray-700">{classById[ex.class_id] || '—'}</td>
-                    <td className="px-4 py-3 text-gray-700">{subjectById[ex.subject_id] || '—'}</td>
-                    <td className="px-4 py-3 text-center font-bold">{questionCount.get(ex.id) || 0}</td>
-                    <td className="px-4 py-3 text-center font-bold">{marksByExam.get(ex.id) || 0}</td>
-                    <td className="px-4 py-3 text-center">{ex.duration_minutes} min</td>
-                    <td className="px-4 py-3 text-center">
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ring-1 uppercase ${tone}`}>{status}</span>
+                    <td className="px-4 py-3 text-[#1A2332] bg-white">{classById[ex.class_id] || '—'}</td>
+                    <td className="px-4 py-3 text-[#1A2332] bg-white">{subjectById[ex.subject_id] || '—'}</td>
+                    <td className="px-4 py-3 text-center font-bold text-[#1A2332] bg-white">{questionCount.get(ex.id) || 0}</td>
+                    <td className="px-4 py-3 text-center font-bold text-[#1A2332] bg-white">{marksByExam.get(ex.id) || 0}</td>
+                    <td className="px-4 py-3 text-center text-[#1A2332] bg-white">{ex.duration_minutes} min</td>
+                    <td className="px-4 py-3 text-center bg-white">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ring-1 uppercase ${tone}`}>{status}</span>
                     </td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap">
-                      <button onClick={() => onOpen(ex.id)} className="text-blue-600 hover:text-blue-700 font-semibold text-[11px] mr-3">Open</button>
-                      <button onClick={() => removeExam(ex)} className="text-red-600 hover:text-red-700 font-semibold text-[11px]">Delete</button>
+                    <td className="px-4 py-3 text-right whitespace-nowrap bg-white">
+                      <button onClick={() => onOpen(ex.id)} className="text-blue-700 hover:text-blue-800 font-bold text-[11px] mr-3">Open</button>
+                      <button onClick={() => removeExam(ex)} className="text-red-700 hover:text-red-800 font-bold text-[11px]">Delete</button>
                     </td>
                   </tr>
                 )
@@ -2149,13 +2156,13 @@ function ExamDetail({
   return (
     <div className="space-y-5">
       <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-5">
-        <button onClick={onBack} className="text-xs font-bold text-gray-500 hover:text-[#4A2E1B] mb-3 inline-flex items-center gap-1">
+        <button onClick={onBack} className="text-xs font-bold text-gray-600 hover:text-[#4A2E1B] mb-3 inline-flex items-center gap-1">
           ← Back to Exams
         </button>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h1 className="text-lg sm:text-xl font-black text-[#4A2E1B] truncate">{exam.title}</h1>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-gray-600 mt-1">
               {cls?.name || '—'} · {subj?.name || '—'} · {exam.term} · {exam.session}
             </p>
             <div className="flex flex-wrap items-center gap-2 mt-2">
@@ -2263,18 +2270,18 @@ function SetupSection({
         <h3 className="font-semibold text-[#4A2E1B] mb-3">Exam Setup</h3>
         <div className="space-y-4">
           <FormField label="Title" required>
-            <input required value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+            <input required value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
           </FormField>
           <div className="grid grid-cols-2 gap-3">
             <FormField label="Duration (minutes)" required>
-              <input type="number" min={1} value={draft.duration_minutes} onChange={(e) => setDraft({ ...draft, duration_minutes: Number(e.target.value) })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+              <input type="number" min={1} value={draft.duration_minutes} onChange={(e) => setDraft({ ...draft, duration_minutes: Number(e.target.value) })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
             </FormField>
             <FormField label="Max Attempts">
-              <input type="number" min={1} value={draft.max_attempts} onChange={(e) => setDraft({ ...draft, max_attempts: Number(e.target.value) })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+              <input type="number" min={1} value={draft.max_attempts} onChange={(e) => setDraft({ ...draft, max_attempts: Number(e.target.value) })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
             </FormField>
           </div>
           <FormField label="Instructions for Students">
-            <textarea rows={3} value={draft.instructions} onChange={(e) => setDraft({ ...draft, instructions: e.target.value })} placeholder="e.g. No calculators. Read each question carefully." className="w-full text-sm p-3 bg-white border border-pink-200 rounded-xl outline-none resize-none" />
+            <textarea rows={3} value={draft.instructions} onChange={(e) => setDraft({ ...draft, instructions: e.target.value })} placeholder="e.g. No calculators. Read each question carefully." className="w-full text-sm p-3 bg-white border border-pink-200 rounded-xl outline-none resize-none text-[#1A2332]" />
           </FormField>
         </div>
       </div>
@@ -2284,10 +2291,10 @@ function SetupSection({
         <p className="text-xs text-gray-500 mb-3">Leave blank = available immediately when published.</p>
         <div className="grid grid-cols-2 gap-3">
           <FormField label="Start (optional)">
-            <input type="datetime-local" value={draft.start_at} onChange={(e) => setDraft({ ...draft, start_at: e.target.value })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+            <input type="datetime-local" value={draft.start_at} onChange={(e) => setDraft({ ...draft, start_at: e.target.value })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
           </FormField>
           <FormField label="End (optional)">
-            <input type="datetime-local" value={draft.end_at} onChange={(e) => setDraft({ ...draft, end_at: e.target.value })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+            <input type="datetime-local" value={draft.end_at} onChange={(e) => setDraft({ ...draft, end_at: e.target.value })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
           </FormField>
         </div>
       </div>
@@ -2328,7 +2335,7 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
   return (
     <label className="flex items-center gap-3 cursor-pointer select-none">
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="w-5 h-5 rounded border-pink-300 text-pink-600 focus:ring-pink-500" />
-      <span className="text-sm font-medium text-[#4A2E1B]">{label}</span>
+      <span className="text-sm font-medium text-[#1A2332]">{label}</span>
     </label>
   )
 }
@@ -2461,7 +2468,7 @@ function QuestionsSection({
         <div className="px-5 py-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-xs font-bold text-[#4A2E1B]">Bulk Question Upload</p>
-            <p className="text-[11px] text-gray-500 mt-0.5">
+            <p className="text-[11px] text-gray-600 mt-0.5">
               Columns: <span className="font-mono">type, question, option_a..d, correct_answer, marks, theory_answer_guide</span>
             </p>
           </div>
@@ -2498,11 +2505,11 @@ function QuestionsSection({
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {preview.rows.slice(0, 60).map((r, i) => (
-                      <tr key={i} className={r.errors.length ? 'bg-red-50/40' : ''}>
-                        <td className="px-3 py-2 font-mono text-gray-500">{r.rowNum}</td>
-                        <td className="px-3 py-2 uppercase text-[10px] font-bold">{r.type}</td>
-                        <td className="px-3 py-2 max-w-md truncate">{r.question_text}</td>
-                        <td className="px-3 py-2 text-center font-bold">{r.marks}</td>
+                      <tr key={i} className={r.errors.length ? 'bg-red-50/40' : 'bg-white'}>
+                        <td className="px-3 py-2 font-mono text-gray-600">{r.rowNum}</td>
+                        <td className="px-3 py-2 uppercase text-[10px] font-bold text-[#1A2332]">{r.type}</td>
+                        <td className="px-3 py-2 max-w-md truncate text-[#1A2332]">{r.question_text}</td>
+                        <td className="px-3 py-2 text-center font-bold text-[#1A2332]">{r.marks}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -2522,37 +2529,37 @@ function QuestionsSection({
       <div className="rounded-xl ring-1 ring-slate-200 overflow-hidden">
         <div className="px-5 py-4 bg-slate-50 border-b border-slate-200">
           <p className="text-xs font-bold text-[#4A2E1B]">Existing Questions ({questions.length})</p>
-          <p className="text-[11px] text-gray-500">
+          <p className="text-[11px] text-gray-600">
             {questions.filter((q) => q.type === 'objective').length} objective · {questions.filter((q) => q.type === 'theory').length} theory · {questions.reduce((a, b) => a + b.marks, 0)} marks
           </p>
         </div>
         {questions.length === 0 ? (
-          <div className="p-12 text-center text-xs text-gray-400 italic">No questions yet. Upload above.</div>
+          <div className="p-12 text-center text-xs text-gray-500 italic">No questions yet. Upload above.</div>
         ) : (
           <div className="overflow-x-auto max-h-[560px]">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-gray-700 text-[11px] uppercase tracking-wider sticky top-0">
+              <thead className="bg-[#4A2E1B] text-white text-[11px] uppercase tracking-wider sticky top-0">
                 <tr>
-                  <th className="px-4 py-3">#</th>
-                  <th className="px-4 py-3">Type</th>
-                  <th className="px-4 py-3">Question</th>
-                  <th className="px-4 py-3 text-center">Correct</th>
-                  <th className="px-4 py-3 text-center">Marks</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
+                  <th className="px-4 py-3 text-white">#</th>
+                  <th className="px-4 py-3 text-white">Type</th>
+                  <th className="px-4 py-3 text-white">Question</th>
+                  <th className="px-4 py-3 text-center text-white">Correct</th>
+                  <th className="px-4 py-3 text-center text-white">Marks</th>
+                  <th className="px-4 py-3 text-right text-white">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 bg-white">
                 {questions.map((q, i) => (
-                  <tr key={q.id} className="hover:bg-pink-50/50">
-                    <td className="px-4 py-3 font-mono text-gray-500">{i + 1}</td>
-                    <td className="px-4 py-3">
+                  <tr key={q.id} className="hover:bg-pink-50/40">
+                    <td className="px-4 py-3 font-mono text-gray-600 bg-white">{i + 1}</td>
+                    <td className="px-4 py-3 bg-white">
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${q.type === 'theory' ? 'bg-purple-50 text-purple-700 ring-1 ring-purple-200' : 'bg-pink-50 text-pink-700 ring-1 ring-pink-200'}`}>{q.type}</span>
                     </td>
-                    <td className="px-4 py-3 max-w-md text-gray-800">{q.question_text}</td>
-                    <td className="px-4 py-3 text-center font-mono font-bold">{q.type === 'objective' ? q.correct_answer : '—'}</td>
-                    <td className="px-4 py-3 text-center font-bold">{q.marks}</td>
-                    <td className="px-4 py-3 text-right">
-                      <button onClick={() => onDelete(q)} className="text-red-600 hover:text-red-700 font-semibold text-[11px]">Delete</button>
+                    <td className="px-4 py-3 max-w-md text-[#1A2332] bg-white">{q.question_text}</td>
+                    <td className="px-4 py-3 text-center font-mono font-bold text-[#1A2332] bg-white">{q.type === 'objective' ? q.correct_answer : '—'}</td>
+                    <td className="px-4 py-3 text-center font-bold text-[#1A2332] bg-white">{q.marks}</td>
+                    <td className="px-4 py-3 text-right bg-white">
+                      <button onClick={() => onDelete(q)} className="text-red-700 hover:text-red-800 font-bold text-[11px]">Delete</button>
                     </td>
                   </tr>
                 ))}
@@ -2582,8 +2589,8 @@ function PreviewSection({ exam, questions }: { exam: CbtExam; questions: Questio
         <div key={q.id} className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-5">
           <div className="flex items-start gap-3 mb-3">
             <span className="shrink-0 w-7 h-7 rounded-lg bg-[#4A2E1B] text-white text-xs font-bold flex items-center justify-center">{i + 1}</span>
-            <p className="font-medium text-sm text-[#4A2E1B] flex-1">{q.question_text}</p>
-            <span className="text-[10px] font-bold text-gray-500 shrink-0">{q.marks} mark{q.marks === 1 ? '' : 's'}</span>
+            <p className="font-medium text-sm text-[#1A2332] flex-1">{q.question_text}</p>
+            <span className="text-[10px] font-bold text-gray-600 shrink-0">{q.marks} mark{q.marks === 1 ? '' : 's'}</span>
           </div>
           {q.type === 'objective' ? (
             <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 ml-10">
@@ -2599,10 +2606,10 @@ function PreviewSection({ exam, questions }: { exam: CbtExam; questions: Questio
             </ul>
           ) : (
             <div className="ml-10">
-              <textarea disabled placeholder="Students type their answer here." rows={3} className="w-full text-xs p-3 bg-slate-50 border border-slate-200 rounded-lg resize-none" />
+              <textarea disabled placeholder="Students type their answer here." rows={3} className="w-full text-xs p-3 bg-slate-50 border border-slate-200 rounded-lg resize-none text-[#1A2332]" />
               {q.theory_answer_guide && (
                 <details className="mt-2 text-xs">
-                  <summary className="cursor-pointer text-gray-500 hover:text-gray-700">Show answer guide (admin only)</summary>
+                  <summary className="cursor-pointer text-gray-600 hover:text-gray-800">Show answer guide (admin only)</summary>
                   <p className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 italic">{q.theory_answer_guide}</p>
                 </details>
               )}
@@ -2612,7 +2619,7 @@ function PreviewSection({ exam, questions }: { exam: CbtExam; questions: Questio
       ))}
 
       {questions.length === 0 && (
-        <div className="text-center py-12 text-xs text-gray-400 italic border-2 border-dashed border-slate-200 rounded-2xl">No questions to preview yet.</div>
+        <div className="text-center py-12 text-xs text-gray-500 italic border-2 border-dashed border-slate-200 rounded-2xl">No questions to preview yet.</div>
       )}
     </div>
   )
@@ -2656,42 +2663,45 @@ function SubmissionsTab({
       </div>
       <div className="p-5 border-b border-slate-100">
         <label className="block text-xs font-bold text-[#4A2E1B] mb-1">Exam</label>
-        <select value={examId} onChange={(e) => setExamId(e.target.value)} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none">
+        <select value={examId} onChange={(e) => setExamId(e.target.value)} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]">
           <option value="">-- Choose Exam --</option>
           {exams.map((ex) => <option key={ex.id} value={ex.id}>{ex.title}</option>)}
         </select>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-left text-xs">
-          <thead className="bg-slate-50 text-gray-700 text-[11px] uppercase tracking-wider">
+          <thead className="bg-[#4A2E1B] text-white text-[11px] uppercase tracking-wider">
             <tr>
-              <th className="px-3 py-3 w-12"></th>
-              <th className="px-5 py-3">Student</th>
-              <th className="px-5 py-3 text-center">Status</th>
-              <th className="px-5 py-3 text-center">Score</th>
-              <th className="px-5 py-3 text-center">Time Spent</th>
-              <th className="px-5 py-3 text-center">Switches</th>
-              <th className="px-5 py-3 text-center">Submitted</th>
+              <th className="px-3 py-3 w-12 text-white"></th>
+              <th className="px-5 py-3 text-white">Student</th>
+              <th className="px-5 py-3 text-center text-white">Status</th>
+              <th className="px-5 py-3 text-center text-white">Score</th>
+              <th className="px-5 py-3 text-center text-white">Time Spent</th>
+              <th className="px-5 py-3 text-center text-white">Switches</th>
+              <th className="px-5 py-3 text-center text-white">Submitted</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
-            {loading && <tr><td colSpan={7} className="px-5 py-12 text-center text-xs text-gray-400 italic">Loading…</td></tr>}
-            {!loading && !examId && <tr><td colSpan={7} className="px-5 py-12 text-center text-xs text-gray-400 italic">Pick an exam above.</td></tr>}
-            {!loading && examId && attempts.length === 0 && <tr><td colSpan={7} className="px-5 py-12 text-center text-xs text-gray-400 italic">No submissions yet.</td></tr>}
+          <tbody className="divide-y divide-slate-100 bg-white">
+            {loading && <tr><td colSpan={7} className="px-5 py-12 text-center text-xs text-gray-500 italic bg-white">Loading…</td></tr>}
+            {!loading && !examId && <tr><td colSpan={7} className="px-5 py-12 text-center text-xs text-gray-500 italic bg-white">Pick an exam above.</td></tr>}
+            {!loading && examId && attempts.length === 0 && <tr><td colSpan={7} className="px-5 py-12 text-center text-xs text-gray-500 italic bg-white">No submissions yet.</td></tr>}
             {!loading && attempts.map((a) => {
               const s = studentById[a.student_id]
               const pct = a.total_marks ? Math.round(((a.score || 0) / a.total_marks) * 100) : 0
               return (
-                <tr key={a.id}>
-                  <td className="px-3 py-2">
+                <tr key={a.id} className="hover:bg-pink-50/40">
+                  <td className="px-3 py-2 bg-white">
                     {s?.passport_url ? (
                       <img src={s.passport_url} alt={s.full_name} className="w-8 h-10 object-cover rounded ring-1 ring-slate-200" />
                     ) : (
                       <div className="w-8 h-10 rounded bg-slate-100 ring-1 ring-slate-200" />
                     )}
                   </td>
-                  <td className="px-5 py-3 font-medium text-[#4A2E1B]">{s?.full_name || '—'} <span className="text-gray-500 font-mono text-[10px]">{s?.admission_number}</span></td>
-                  <td className="px-5 py-3 text-center">
+                  <td className="px-5 py-3 font-bold text-[#4A2E1B] bg-white">
+                    {s?.full_name || '—'}{' '}
+                    <span className="text-gray-600 font-mono text-[10px] font-normal">{s?.admission_number}</span>
+                  </td>
+                  <td className="px-5 py-3 text-center bg-white">
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ring-1 uppercase ${
                       a.status === 'submitted' ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' :
                       a.status === 'in_progress' ? 'bg-blue-50 text-blue-700 ring-blue-200' :
@@ -2699,12 +2709,12 @@ function SubmissionsTab({
                       'bg-amber-50 text-amber-700 ring-amber-200'
                     }`}>{a.status.replace(/_/g, ' ')}</span>
                   </td>
-                  <td className="px-5 py-3 text-center font-bold">{a.score ?? '—'} / {a.total_marks ?? '—'} <span className="text-gray-500">({pct}%)</span></td>
-                  <td className="px-5 py-3 text-center text-gray-600">{formatDuration(a.duration_spent_seconds)}</td>
-                  <td className="px-5 py-3 text-center">
-                    <span className={`font-bold ${a.tab_switch_count > 0 ? 'text-red-600' : 'text-gray-500'}`}>{a.tab_switch_count}</span>
+                  <td className="px-5 py-3 text-center font-bold text-[#1A2332] bg-white">{a.score ?? '—'} / {a.total_marks ?? '—'} <span className="text-gray-600">({pct}%)</span></td>
+                  <td className="px-5 py-3 text-center text-[#1A2332] bg-white">{formatDuration(a.duration_spent_seconds)}</td>
+                  <td className="px-5 py-3 text-center bg-white">
+                    <span className={`font-bold ${a.tab_switch_count > 0 ? 'text-red-700' : 'text-gray-600'}`}>{a.tab_switch_count}</span>
                   </td>
-                  <td className="px-5 py-3 text-center text-gray-500">{a.submitted_at ? new Date(a.submitted_at).toLocaleString() : '—'}</td>
+                  <td className="px-5 py-3 text-center text-gray-600 bg-white">{a.submitted_at ? new Date(a.submitted_at).toLocaleString() : '—'}</td>
                 </tr>
               )
             })}
@@ -2861,7 +2871,7 @@ function LiveMonitorTab({
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="sm:col-span-2">
             <label className="block text-xs font-bold text-[#4A2E1B] mb-1">Live Exam</label>
-            <select value={selectedExamId} onChange={(e) => setSelectedExamId(e.target.value)} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none">
+            <select value={selectedExamId} onChange={(e) => setSelectedExamId(e.target.value)} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]">
               <option value="">-- Choose Exam --</option>
               {exams.filter((e) => e.status === 'published').map((ex) => (
                 <option key={ex.id} value={ex.id}>
@@ -2885,7 +2895,7 @@ function LiveMonitorTab({
 
         {selectedExam && (
           <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-slate-100">
-            <span className="text-[11px] text-gray-500">
+            <span className="text-[11px] text-gray-600">
               {lastRefresh ? `Last refresh: ${lastRefresh.toLocaleTimeString()}` : 'Loading…'}
             </span>
             <div className="flex-1" />
@@ -2900,7 +2910,7 @@ function LiveMonitorTab({
       </div>
 
       {!selectedExam && (
-        <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-12 text-center text-xs text-gray-400 italic">
+        <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-12 text-center text-xs text-gray-500 italic">
           Choose a published exam above to monitor attempts.
         </div>
       )}
@@ -2939,27 +2949,27 @@ function LiveMonitorTab({
             <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 overflow-hidden">
               <div className="px-5 py-4 border-b border-slate-100">
                 <h3 className="text-sm font-bold text-[#4A2E1B]">{selectedExam.title} · Live Status</h3>
-                <p className="text-[11px] text-gray-500 mt-0.5">
+                <p className="text-[11px] text-gray-600 mt-0.5">
                   {classStudents.length} students · {objectiveQuestions.length} objective · {theoryQuestions.length} theory
                 </p>
               </div>
               <div className="overflow-x-auto max-h-[640px]">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 text-gray-700 text-[11px] uppercase tracking-wider sticky top-0">
+                  <thead className="bg-[#4A2E1B] text-white text-[11px] uppercase tracking-wider sticky top-0">
                     <tr>
-                      <th className="px-3 py-3 w-12"></th>
-                      <th className="px-4 py-3">Student</th>
-                      <th className="px-4 py-3">Adm No</th>
-                      <th className="px-4 py-3 text-center">Status</th>
-                      <th className="px-4 py-3 text-center">Progress</th>
-                      <th className="px-4 py-3 text-center">Score</th>
-                      <th className="px-4 py-3 text-center">Switches</th>
-                      <th className="px-4 py-3 text-right">Actions</th>
+                      <th className="px-3 py-3 w-12 text-white"></th>
+                      <th className="px-4 py-3 text-white">Student</th>
+                      <th className="px-4 py-3 text-white">Adm No</th>
+                      <th className="px-4 py-3 text-center text-white">Status</th>
+                      <th className="px-4 py-3 text-center text-white">Progress</th>
+                      <th className="px-4 py-3 text-center text-white">Score</th>
+                      <th className="px-4 py-3 text-center text-white">Switches</th>
+                      <th className="px-4 py-3 text-right text-white">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-slate-100 bg-white">
                     {classStudents.length === 0 && (
-                      <tr><td colSpan={8} className="px-4 py-12 text-center text-xs text-gray-400 italic">No students in this class.</td></tr>
+                      <tr><td colSpan={8} className="px-4 py-12 text-center text-xs text-gray-500 italic bg-white">No students in this class.</td></tr>
                     )}
                     {classStudents.map((student) => {
                       const att = attempts.find((a) => a.student_id === student.id)
@@ -2979,43 +2989,43 @@ function LiveMonitorTab({
                         att.status === 'graded' ? 'bg-purple-50 text-purple-700 ring-purple-200' :
                         'bg-emerald-50 text-emerald-700 ring-emerald-200'
                       return (
-                        <tr key={student.id} className="hover:bg-pink-50/50">
-                          <td className="px-3 py-2">
+                        <tr key={student.id} className="hover:bg-pink-50/40">
+                          <td className="px-3 py-2 bg-white">
                             {student.passport_url ? (
                               <img src={student.passport_url} alt={student.full_name} className="w-8 h-10 object-cover rounded ring-1 ring-slate-200" />
                             ) : (
                               <div className="w-8 h-10 rounded bg-slate-100 ring-1 ring-slate-200" />
                             )}
                           </td>
-                          <td className="px-4 py-3 font-medium text-[#4A2E1B]">{student.full_name}</td>
-                          <td className="px-4 py-3 font-mono text-pink-700">{student.admission_number}</td>
-                          <td className="px-4 py-3 text-center">
+                          <td className="px-4 py-3 font-bold text-[#4A2E1B] bg-white">{student.full_name}</td>
+                          <td className="px-4 py-3 font-mono text-pink-700 font-semibold bg-white">{student.admission_number}</td>
+                          <td className="px-4 py-3 text-center bg-white">
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ring-1 uppercase ${tone}`}>{statusLabel}</span>
                           </td>
-                          <td className="px-4 py-3 text-center">
-                            {att ? <span className="text-gray-700 font-mono">{objAnswered}/{objectiveQuestions.length}</span> : '—'}
+                          <td className="px-4 py-3 text-center text-[#1A2332] font-mono bg-white">
+                            {att ? <span>{objAnswered}/{objectiveQuestions.length}</span> : '—'}
                           </td>
-                          <td className="px-4 py-3 text-center font-bold">
+                          <td className="px-4 py-3 text-center font-bold text-[#1A2332] bg-white">
                             {att && att.status !== 'in_progress'
                               ? <>{objScore}/{totalObj}</>
-                              : <span className="text-gray-400">—</span>}
+                              : <span className="text-gray-500">—</span>}
                           </td>
-                          <td className="px-4 py-3 text-center">
-                            {att ? <span className={`font-bold ${att.tab_switch_count > 0 ? 'text-red-600' : 'text-gray-500'}`}>{att.tab_switch_count}</span> : '—'}
+                          <td className="px-4 py-3 text-center bg-white">
+                            {att ? <span className={`font-bold ${att.tab_switch_count > 0 ? 'text-red-700' : 'text-gray-600'}`}>{att.tab_switch_count}</span> : '—'}
                           </td>
-                          <td className="px-4 py-3 text-right whitespace-nowrap">
+                          <td className="px-4 py-3 text-right whitespace-nowrap bg-white">
                             {att ? (
                               <>
                                 {att.status === 'in_progress' && (
                                   <>
-                                    <button onClick={() => extendOne(att, 5)} className="text-amber-600 hover:text-amber-700 font-semibold text-[11px] mr-2">+5m</button>
-                                    <button onClick={() => forceSubmit(att)} className="text-emerald-600 hover:text-emerald-700 font-semibold text-[11px] mr-2">Force</button>
+                                    <button onClick={() => extendOne(att, 5)} className="text-amber-700 hover:text-amber-800 font-bold text-[11px] mr-2">+5m</button>
+                                    <button onClick={() => forceSubmit(att)} className="text-emerald-700 hover:text-emerald-800 font-bold text-[11px] mr-2">Force</button>
                                   </>
                                 )}
-                                <button onClick={() => cancelAttempt(att)} className="text-red-600 hover:text-red-700 font-semibold text-[11px]">Cancel</button>
+                                <button onClick={() => cancelAttempt(att)} className="text-red-700 hover:text-red-800 font-bold text-[11px]">Cancel</button>
                               </>
                             ) : (
-                              <span className="text-[11px] text-gray-400 italic">Waiting…</span>
+                              <span className="text-[11px] text-gray-500 italic">Waiting…</span>
                             )}
                           </td>
                         </tr>
@@ -3048,13 +3058,13 @@ function LiveMonitorTab({
 function LiveStat({ label, value, tone, isText }: { label: string; value: number | string; tone: 'neutral' | 'blue' | 'amber' | 'emerald'; isText?: boolean }) {
   const toneMap = {
     neutral: 'text-[#4A2E1B]',
-    blue: 'text-blue-600',
-    amber: 'text-amber-600',
-    emerald: 'text-emerald-600',
+    blue: 'text-blue-700',
+    amber: 'text-amber-700',
+    emerald: 'text-emerald-700',
   }
   return (
     <div className="bg-white rounded-2xl p-4 shadow-sm ring-1 ring-slate-200">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{label}</p>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-600">{label}</p>
       <p className={`${isText ? 'text-lg' : 'text-2xl'} font-black mt-1 ${toneMap[tone]}`}>{value}</p>
     </div>
   )
@@ -3117,11 +3127,11 @@ function TheoryMarkingPanel({
     <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 overflow-hidden">
       <div className="px-5 py-4 border-b border-slate-100">
         <h3 className="text-sm font-bold text-[#4A2E1B]">Theory Marking · {questions.length} question(s)</h3>
-        <p className="text-[11px] text-gray-500 mt-0.5">Open each submission to award marks per question.</p>
+        <p className="text-[11px] text-gray-600 mt-0.5">Open each submission to award marks per question.</p>
       </div>
       <div className="divide-y divide-slate-100">
         {pendingAttempts.length === 0 && (
-          <div className="p-12 text-center text-xs text-gray-400 italic">No submissions waiting for manual marking.</div>
+          <div className="p-12 text-center text-xs text-gray-500 italic">No submissions waiting for manual marking.</div>
         )}
         {pendingAttempts.map((attempt) => {
           const student = studentById[attempt.student_id]
@@ -3141,7 +3151,7 @@ function TheoryMarkingPanel({
                   )}
                   <div className="min-w-0">
                     <p className="font-bold text-sm text-[#4A2E1B] truncate">{student?.full_name || '—'}</p>
-                    <p className="text-[10px] text-gray-500 font-mono">{student?.admission_number}</p>
+                    <p className="text-[10px] text-gray-600 font-mono">{student?.admission_number}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -3151,14 +3161,14 @@ function TheoryMarkingPanel({
                   {attempt.final_score !== null && (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-gray-700">Final: {attempt.final_score}</span>
                   )}
-                  <span className="text-xs text-gray-500">{open ? '▲' : '▼'}</span>
+                  <span className="text-xs text-gray-600">{open ? '▲' : '▼'}</span>
                 </div>
               </button>
 
               {open && (
                 <div className="px-5 pb-6 space-y-4 bg-slate-50">
                   <div className="bg-white rounded-xl p-4 border border-slate-200 mt-3">
-                    <p className="text-[11px] font-bold uppercase text-gray-500">Objective Section</p>
+                    <p className="text-[11px] font-bold uppercase text-gray-600">Objective Section</p>
                     <p className="text-sm font-bold text-[#4A2E1B] mt-1">
                       {attempt.score ?? 0} / {objTotal} marks auto-scored
                     </p>
@@ -3172,15 +3182,15 @@ function TheoryMarkingPanel({
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex items-start gap-2 flex-1">
                             <span className="shrink-0 w-7 h-7 rounded-lg bg-[#4A2E1B] text-white text-xs font-bold flex items-center justify-center">{idx + 1}</span>
-                            <p className="text-sm font-medium text-[#4A2E1B]">{q.question_text}</p>
+                            <p className="text-sm font-medium text-[#1A2332]">{q.question_text}</p>
                           </div>
-                          <span className="text-[10px] font-bold text-gray-500 shrink-0">Max {q.marks}</span>
+                          <span className="text-[10px] font-bold text-gray-600 shrink-0">Max {q.marks}</span>
                         </div>
 
                         <div>
-                          <p className="text-[11px] font-bold uppercase text-gray-500 mb-1">Student's Answer</p>
-                          <div className="bg-slate-50 rounded-lg p-3 text-xs text-gray-800 whitespace-pre-wrap border border-slate-200">
-                            {studentAnswer || <span className="italic text-gray-400">(Blank)</span>}
+                          <p className="text-[11px] font-bold uppercase text-gray-600 mb-1">Student's Answer</p>
+                          <div className="bg-slate-50 rounded-lg p-3 text-xs text-[#1A2332] whitespace-pre-wrap border border-slate-200">
+                            {studentAnswer || <span className="italic text-gray-500">(Blank)</span>}
                           </div>
                         </div>
 
@@ -3192,7 +3202,7 @@ function TheoryMarkingPanel({
                         )}
 
                         <div className="flex items-center gap-3">
-                          <label className="text-xs font-bold text-gray-600">Marks:</label>
+                          <label className="text-xs font-bold text-gray-700">Marks:</label>
                           <input
                             type="number"
                             min={0}
@@ -3205,9 +3215,9 @@ function TheoryMarkingPanel({
                                 [attempt.id]: { ...(prev[attempt.id] || {}), [q.id]: v },
                               }))
                             }}
-                            className="w-20 text-sm px-3 py-2 bg-white border border-pink-200 rounded-lg outline-none text-center font-bold"
+                            className="w-20 text-sm px-3 py-2 bg-white border border-pink-200 rounded-lg outline-none text-center font-bold text-[#1A2332]"
                           />
-                          <span className="text-xs text-gray-500">/ {q.marks}</span>
+                          <span className="text-xs text-gray-600">/ {q.marks}</span>
                         </div>
                       </div>
                     )
@@ -3435,7 +3445,6 @@ function BroadsheetTab({
   function downloadBroadsheet() {
     if (!selectedClass || rows.length === 0) { showToast('No broadsheet data to download.', 'warn'); return }
 
-    // Header row
     const header: string[] = ['#', 'Admission No', 'Name', 'Age']
     classSubjectIds.forEach((sid) => header.push(subjectById[sid] || 'Subject'))
     header.push('Total', 'Average', 'Grade', 'Position')
@@ -3451,7 +3460,6 @@ function BroadsheetTab({
       return row
     })
 
-    // Class average row
     const avgRow: any[] = ['', '', 'CLASS AVERAGE', '']
     classSubjectIds.forEach(() => avgRow.push(''))
     avgRow.push('', classAverage, '', '')
@@ -3598,20 +3606,20 @@ function BroadsheetTab({
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="block text-xs font-bold text-[#4A2E1B] mb-1">Class</label>
-            <select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none">
+            <select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]">
               <option value="">-- Choose Class --</option>
               {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-xs font-bold text-[#4A2E1B] mb-1">Term</label>
-            <select value={selectedTerm} onChange={(e) => setSelectedTerm(e.target.value as Term)} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none">
+            <select value={selectedTerm} onChange={(e) => setSelectedTerm(e.target.value as Term)} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]">
               {TERMS.map((t) => <option key={t}>{t}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-xs font-bold text-[#4A2E1B] mb-1">Session</label>
-            <input value={session} onChange={(e) => setSession(e.target.value)} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+            <input value={session} onChange={(e) => setSession(e.target.value)} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
           </div>
         </div>
 
@@ -3683,61 +3691,61 @@ function BroadsheetTab({
         <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100">
             <h3 className="text-sm font-bold text-[#4A2E1B]">{classById[selectedClass]} · {selectedTerm} Broadsheet</h3>
-            <p className="text-[11px] text-gray-500 mt-0.5">{rows.length} students · Class Average {classAverage}%</p>
+            <p className="text-[11px] text-gray-600 mt-0.5">{rows.length} students · Class Average {classAverage}%</p>
           </div>
           {rows.length === 0 ? (
-            <div className="p-12 text-center text-xs text-gray-400 italic">No students or scores yet.</div>
+            <div className="p-12 text-center text-xs text-gray-500 italic">No students or scores yet.</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs whitespace-nowrap">
                 <thead className="bg-[#4A2E1B] text-white">
                   <tr>
-                    <th className="p-2 w-12"></th>
-                    <th className="p-3 sticky left-12 bg-[#4A2E1B]">Name</th>
-                    <th className="p-3 text-center">Age</th>
-                    <th className="p-3 text-center">Pos.</th>
+                    <th className="p-2 w-12 text-white"></th>
+                    <th className="p-3 sticky left-12 bg-[#4A2E1B] text-white">Name</th>
+                    <th className="p-3 text-center text-white">Age</th>
+                    <th className="p-3 text-center text-white">Pos.</th>
                     {classSubjectIds.map((sid) => (
-                      <th key={sid} className="p-3 text-center border-l border-pink-900/50">
-                        {subjectById[sid]}<br /><span className="text-[10px] opacity-80">(100)</span>
+                      <th key={sid} className="p-3 text-center border-l border-pink-900/50 text-white">
+                        {subjectById[sid]}<br /><span className="text-[10px] opacity-90">(100)</span>
                       </th>
                     ))}
-                    <th className="p-3 text-center border-l border-pink-900">Total</th>
-                    <th className="p-3 text-center border-l border-pink-900">Avg (%)</th>
-                    <th className="p-3 text-center border-l border-pink-900">Grade</th>
+                    <th className="p-3 text-center border-l border-pink-900 text-white">Total</th>
+                    <th className="p-3 text-center border-l border-pink-900 text-white">Avg (%)</th>
+                    <th className="p-3 text-center border-l border-pink-900 text-white">Grade</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-pink-100">
+                <tbody className="divide-y divide-pink-100 bg-white">
                   {rows.map((r) => {
                     const { grade, tone } = gradeFromTotal(r.percentage)
                     return (
-                      <tr key={r.id} className="hover:bg-pink-50/50">
-                        <td className="p-2 sticky left-0 bg-white z-10">
+                      <tr key={r.id} className="hover:bg-pink-50/40">
+                        <td className="p-2 bg-white">
                           {r.passport ? (
                             <img src={r.passport} alt={r.name} className="w-8 h-10 object-cover rounded ring-1 ring-slate-200" />
                           ) : (
                             <div className="w-8 h-10 rounded bg-slate-100 ring-1 ring-slate-200" />
                           )}
                         </td>
-                        <td className="p-3 font-bold text-[#4A2E1B] sticky left-12 bg-white z-10">
+                        <td className="p-3 font-bold text-[#4A2E1B] bg-white">
                           {r.name}
-                          <div className="text-[10px] text-gray-500 font-mono">{r.admissionNo}</div>
+                          <div className="text-[10px] text-gray-600 font-mono font-normal">{r.admissionNo}</div>
                         </td>
-                        <td className="p-3 text-center">{r.age ?? '—'}</td>
-                        <td className="p-3 text-center font-black">{ordinal(r.rank)}</td>
+                        <td className="p-3 text-center text-[#1A2332] bg-white">{r.age ?? '—'}</td>
+                        <td className="p-3 text-center font-black text-[#4A2E1B] bg-white">{ordinal(r.rank)}</td>
                         {classSubjectIds.map((sid) => {
                           const s = r.subjects[sid]
-                          if (!s) return <td key={sid} className="p-3 text-center bg-gray-50 text-gray-300">–</td>
+                          if (!s) return <td key={sid} className="p-3 text-center bg-gray-50 text-gray-400">–</td>
                           const subG = gradeFromTotal(s.total)
                           return (
-                            <td key={sid} className="p-3 text-center border-l border-pink-100">
-                              <div className={s.total < 40 ? 'text-red-600 font-bold' : ''}>{s.total}</div>
+                            <td key={sid} className="p-3 text-center border-l border-pink-100 bg-white">
+                              <div className={s.total < 40 ? 'text-red-700 font-bold' : 'text-[#1A2332] font-semibold'}>{s.total}</div>
                               <div className={`text-[10px] ${subG.tone}`}>{subG.grade}</div>
                             </td>
                           )
                         })}
-                        <td className="p-3 text-center font-black text-pink-700">{r.total}</td>
-                        <td className="p-3 text-center font-bold text-emerald-700">{r.percentage.toFixed(2)}</td>
-                        <td className={`p-3 text-center font-black ${tone}`}>{grade}</td>
+                        <td className="p-3 text-center font-black text-pink-700 bg-white">{r.total}</td>
+                        <td className="p-3 text-center font-bold text-emerald-700 bg-white">{r.percentage.toFixed(2)}</td>
+                        <td className={`p-3 text-center font-black bg-white ${tone}`}>{grade}</td>
                       </tr>
                     )
                   })}
@@ -3906,7 +3914,7 @@ function NewsTab({
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
                 placeholder="e.g. Mid-Term Break Announcement"
-                className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none"
+                className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]"
               />
             </FormField>
 
@@ -3917,7 +3925,7 @@ function NewsTab({
                 value={form.body}
                 onChange={(e) => setForm({ ...form, body: e.target.value })}
                 placeholder="Write your announcement here…"
-                className="w-full text-sm p-3 bg-white border border-pink-200 rounded-xl outline-none resize-none"
+                className="w-full text-sm p-3 bg-white border border-pink-200 rounded-xl outline-none resize-none text-[#1A2332]"
               />
             </FormField>
 
@@ -3926,7 +3934,7 @@ function NewsTab({
                 <select
                   value={form.audience}
                   onChange={(e) => setForm({ ...form, audience: e.target.value as any })}
-                  className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none"
+                  className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]"
                 >
                   <option value="all">Everyone</option>
                   <option value="students">All Students</option>
@@ -3941,7 +3949,7 @@ function NewsTab({
                     required
                     value={form.class_id}
                     onChange={(e) => setForm({ ...form, class_id: e.target.value })}
-                    className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none"
+                    className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]"
                   >
                     <option value="">-- Choose Class --</option>
                     {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -3959,7 +3967,7 @@ function NewsTab({
                   className="w-full text-xs file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#4A2E1B] file:text-white hover:file:bg-black bg-white border border-pink-200 rounded-xl p-1"
                 />
                 {file && (
-                  <p className="text-[11px] text-gray-500 mt-1">
+                  <p className="text-[11px] text-gray-600 mt-1">
                     Selected: {file.name} ({(file.size / 1024).toFixed(0)} KB)
                   </p>
                 )}
@@ -3970,7 +3978,7 @@ function NewsTab({
                   type="datetime-local"
                   value={form.expires_at}
                   onChange={(e) => setForm({ ...form, expires_at: e.target.value })}
-                  className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none"
+                  className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]"
                 />
                 <p className="text-[10px] text-gray-500 mt-1">Leave blank to keep forever</p>
               </FormField>
@@ -3983,7 +3991,7 @@ function NewsTab({
                 onChange={(e) => setForm({ ...form, pinned: e.target.checked })}
                 className="w-5 h-5 rounded border-pink-300 text-pink-600 focus:ring-pink-500"
               />
-              <span className="text-sm font-medium text-[#4A2E1B]">📌 Pin to top (important)</span>
+              <span className="text-sm font-medium text-[#1A2332]">📌 Pin to top (important)</span>
             </label>
 
             <div className="flex justify-end gap-2 pt-2">
@@ -4013,7 +4021,7 @@ function NewsTab({
         </div>
 
         {announcements.length === 0 ? (
-          <div className="p-12 text-center text-xs text-gray-400 italic">
+          <div className="p-12 text-center text-xs text-gray-500 italic">
             No announcements yet. Click "+ New Announcement" to publish one.
           </div>
         ) : (
@@ -4034,7 +4042,7 @@ function NewsTab({
                       </span>
                     </div>
                     <h3 className="text-sm font-bold text-[#4A2E1B]">{a.title}</h3>
-                    <p className="text-xs text-gray-700 mt-1 whitespace-pre-wrap">{a.body}</p>
+                    <p className="text-xs text-[#1A2332] mt-1 whitespace-pre-wrap">{a.body}</p>
 
                     {a.attachment_url && (
                       <a
@@ -4047,7 +4055,7 @@ function NewsTab({
                       </a>
                     )}
 
-                    <p className="text-[10px] text-gray-400 mt-2">
+                    <p className="text-[10px] text-gray-500 mt-2">
                       Published {new Date(a.published_at).toLocaleString()}
                       {a.expires_at && ` · Expires ${new Date(a.expires_at).toLocaleString()}`}
                     </p>
@@ -4062,7 +4070,7 @@ function NewsTab({
                     </button>
                     <button
                       onClick={() => deleteAnnouncement(a)}
-                      className="text-[11px] font-bold text-red-600 hover:text-red-700"
+                      className="text-[11px] font-bold text-red-700 hover:text-red-800"
                     >
                       Delete
                     </button>
@@ -4097,20 +4105,20 @@ function AuditTab({
         </div>
         <button
           onClick={() => askConfirm('Clear Log?', 'Clear the session audit log?', () => { setAudit([]); showToast('Cleared.', 'warn') })}
-          className="text-xs font-semibold text-gray-600 hover:text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-50"
+          className="text-xs font-semibold text-gray-600 hover:text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-50"
         >
           Clear
         </button>
       </div>
       <ol className="p-5 space-y-3 max-h-[600px] overflow-y-auto">
-        {audit.length === 0 && <li className="text-center py-10 text-xs text-gray-400 italic">No actions in this session.</li>}
+        {audit.length === 0 && <li className="text-center py-10 text-xs text-gray-500 italic">No actions in this session.</li>}
         {audit.map((a, i) => (
           <li key={i} className="flex items-start gap-3 p-3 rounded-xl ring-1 ring-slate-200 bg-white">
             <div className="w-8 h-8 rounded-lg bg-pink-50 flex items-center justify-center shrink-0"><Icon name="clock" /></div>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-[#4A2E1B]">{a.action}</p>
-              {a.detail && <p className="text-[11px] text-gray-500">{a.detail}</p>}
-              <p className="text-[10px] text-gray-400 mt-1">{new Date(a.ts).toLocaleString()}</p>
+              {a.detail && <p className="text-[11px] text-gray-600">{a.detail}</p>}
+              <p className="text-[10px] text-gray-500 mt-1">{new Date(a.ts).toLocaleString()}</p>
             </div>
           </li>
         ))}
@@ -4147,7 +4155,7 @@ function SettingsTab() {
           {GRADE_SCALE.map((g) => (
             <div key={g.g} className="flex justify-between p-2.5 rounded-lg bg-slate-50 ring-1 ring-slate-200">
               <span className="font-semibold text-[#4A2E1B]">{g.g}</span>
-              <span className="text-gray-600">{g.min}+</span>
+              <span className="text-gray-700">{g.min}+</span>
             </div>
           ))}
         </div>
@@ -4163,8 +4171,8 @@ function SettingsTab() {
 function ReadOnly({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1">{label}</p>
-      <p className="text-sm text-[#4A2E1B] font-medium bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5">{value}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-600 mb-1">{label}</p>
+      <p className="text-sm text-[#1A2332] font-medium bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5">{value}</p>
     </div>
   )
 }

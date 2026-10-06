@@ -21,6 +21,7 @@ type Student = {
   class_id: string | null
   gender: 'Male' | 'Female' | null
   date_of_birth: string | null
+  passport_url: string | null
 }
 
 type ClassRow = { id: string; name: string }
@@ -234,6 +235,59 @@ function isWithinWindow(exam: CbtExam): boolean {
 }
 
 /* ============================================================================
+   STUDENT AVATAR — circular (header) or square (passport-style fallback)
+   ============================================================================ */
+
+function StudentAvatar({
+  student, size = 40, ring = 'ring-white/40', shape = 'circle',
+}: {
+  student: Pick<Student, 'full_name' | 'passport_url'>
+  size?: number
+  ring?: string
+  shape?: 'circle' | 'square'
+}) {
+  const initials = student.full_name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase())
+    .join('')
+
+  const radius = shape === 'circle' ? 'rounded-full' : 'rounded-lg'
+
+  if (student.passport_url) {
+    return (
+      <img
+        src={student.passport_url}
+        alt={student.full_name}
+        className={`${radius} object-cover bg-white shrink-0 ring-2 ${ring}`}
+        style={{ width: size, height: size }}
+        onError={(e) => {
+          const img = e.currentTarget as HTMLImageElement
+          img.style.display = 'none'
+          const fallback = img.nextElementSibling as HTMLElement | null
+          if (fallback) fallback.style.display = 'flex'
+        }}
+        onLoad={(e) => {
+          const img = e.currentTarget as HTMLImageElement
+          const fallback = img.nextElementSibling as HTMLElement | null
+          if (fallback) fallback.style.display = 'none'
+        }}
+      />
+    )
+  }
+
+  return (
+    <div
+      className={`${radius} bg-pink-500 text-white font-black flex items-center justify-center shrink-0 ring-2 ${ring}`}
+      style={{ width: size, height: size, fontSize: size * 0.4 }}
+    >
+      {initials || '👤'}
+    </div>
+  )
+}
+
+/* ============================================================================
    GLOBAL STYLES
    ============================================================================ */
 
@@ -297,6 +351,15 @@ export default function StudentPortal() {
       return
     }
     setStudent(parsed)
+
+    // Dev-only sanity check: passport_url must be present in localStorage.
+    if (process.env.NODE_ENV !== 'production' && !parsed.passport_url) {
+      console.warn(
+        '[StudentPortal] passport_url missing from localStorage.loggedInStudent. ' +
+        'Verify the login page selects passport_url from the students table.'
+      )
+    }
+
     ;(async () => {
       if (parsed.class_id) {
         const { data: c } = await supabase.from('classes').select('*').eq('id', parsed.class_id).maybeSingle()
@@ -340,9 +403,12 @@ export default function StudentPortal() {
       <div className="min-h-screen bg-slate-50 flex flex-col text-gray-800">
         {/* HEADER */}
         <header className="bg-[#4A2E1B] text-white shadow-md border-b-2 border-pink-500 sticky top-0 z-30 no-print">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex justify-between items-center gap-4">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 flex justify-between items-center gap-4">
             <div className="flex items-center gap-3 min-w-0">
-              <img src={SCHOOL.logo} alt="Logo" className="w-10 h-10 rounded-full bg-white p-0.5 shrink-0" />
+              <div className="relative shrink-0">
+                <StudentAvatar student={student} size={44} ring="ring-pink-400/70" />
+                <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-[#4A2E1B]" />
+              </div>
               <div className="min-w-0">
                 <h2 className="font-extrabold text-sm truncate">{student.full_name}</h2>
                 <p className="text-[10px] text-pink-300 truncate">
@@ -350,7 +416,10 @@ export default function StudentPortal() {
                 </p>
               </div>
             </div>
-            <button onClick={handleLogout} className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-500 shrink-0">
+            <button
+              onClick={handleLogout}
+              className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-500 shrink-0"
+            >
               Log Out
             </button>
           </div>
@@ -700,12 +769,48 @@ function ReportCardTab({
           <div className="text-center py-20 text-sm text-gray-500 italic">Loading report card…</div>
         ) : (
           <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-6 sm:p-8 print:shadow-none print:ring-0 print:rounded-none">
-            <div className="text-center pb-4 border-b-2 border-[#4A2E1B]">
-              <img src={SCHOOL.logo} alt="Logo" className="w-16 h-16 mx-auto mb-2" />
-              <h1 className="text-xl font-black text-[#4A2E1B] tracking-tight">{SCHOOL.name.toUpperCase()}</h1>
-              <p className="text-xs italic mt-0.5">Motto: {SCHOOL.motto}</p>
-              <p className="text-[11px] text-gray-600 mt-0.5">{SCHOOL.address}</p>
-              <p className="text-[11px] text-gray-600">{SCHOOL.phones.join(' · ')} · {SCHOOL.email}</p>
+            {/* SCHOOL HEADER with passport top-right (Option A) */}
+            <div className="relative pb-4 border-b-2 border-[#4A2E1B]">
+              {/* Passport — top-right corner */}
+              <div className="absolute top-0 right-0 z-10">
+                <div className="relative">
+                  {student.passport_url ? (
+                    <img
+                      src={student.passport_url}
+                      alt={student.full_name}
+                      className="w-20 h-24 sm:w-24 sm:h-28 rounded-md object-cover ring-2 ring-[#4A2E1B]/30 bg-slate-100 shadow-sm"
+                      onError={(e) => {
+                        const img = e.currentTarget as HTMLImageElement
+                        img.style.display = 'none'
+                        const fb = img.nextElementSibling as HTMLElement | null
+                        if (fb) fb.style.display = 'flex'
+                      }}
+                    />
+                  ) : null}
+                  {!student.passport_url && (
+                    <div className="w-20 h-24 sm:w-24 sm:h-28 rounded-md ring-2 ring-[#4A2E1B]/30 bg-slate-50 flex flex-col items-center justify-center text-gray-400 text-[9px] font-bold text-center px-1">
+                      <span className="text-lg mb-1">👤</span>
+                      PASSPORT
+                    </div>
+                  )}
+                  {/* Hidden fallback if img fails */}
+                  <div
+                    className="w-20 h-24 sm:w-24 sm:h-28 rounded-md ring-2 ring-[#4A2E1B]/30 bg-pink-500 text-white font-black hidden items-center justify-center text-2xl"
+                    style={{ display: 'none' }}
+                  >
+                    {student.full_name.split(' ').filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join('')}
+                  </div>
+                </div>
+              </div>
+
+              {/* School header — centered, padded to avoid passport collision */}
+              <div className="text-center px-24 sm:px-28">
+                <img src={SCHOOL.logo} alt="Logo" className="w-16 h-16 mx-auto mb-2" />
+                <h1 className="text-lg sm:text-xl font-black text-[#4A2E1B] tracking-tight">{SCHOOL.name.toUpperCase()}</h1>
+                <p className="text-xs italic mt-0.5">Motto: {SCHOOL.motto}</p>
+                <p className="text-[11px] text-gray-600 mt-0.5">{SCHOOL.address}</p>
+                <p className="text-[11px] text-gray-600">{SCHOOL.phones.join(' · ')} · {SCHOOL.email}</p>
+              </div>
             </div>
 
             <div className="text-center py-3">
@@ -1102,7 +1207,7 @@ function RulesModal({
             </div>
             <div className="bg-slate-50 rounded-xl p-3">
               <p className="text-[10px] font-bold uppercase text-gray-500">Attempts</p>
-              <p className="text-xl font-black text-[#4A2E1B] mt-1">1</p>
+              <p className="text-xl font-black text-[#4A2E1B] mt-1">{exam.max_attempts}</p>
             </div>
           </div>
 
@@ -1116,7 +1221,10 @@ function RulesModal({
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2 text-xs text-gray-700">
             <p className="font-bold text-[#4A2E1B]">Please note:</p>
             <ul className="list-disc pl-5 space-y-1">
-              <li>You have <strong>one attempt only</strong>. Timer starts when you click Begin.</li>
+              <li>
+                You have <strong>{exam.max_attempts} attempt{exam.max_attempts === 1 ? '' : 's'}</strong>.
+                The timer starts when you click Begin.
+              </li>
               <li>Your answers are <strong>saved automatically</strong> — you can safely close the tab and resume.</li>
               <li>If your time runs out, the exam submits automatically.</li>
               <li>Do not leave this page during the exam. Leaving multiple times will be logged.</li>
@@ -1162,6 +1270,7 @@ function ExamRunner({
 
   const tabSwitchRef = useRef(0)
   const submittedRef = useRef(false)
+  const autoSubmittedRef = useRef(false)
 
   useEffect(() => {
     ;(async () => {
@@ -1230,15 +1339,15 @@ function ExamRunner({
 
   useEffect(() => {
     if (submittedRef.current || loading) return
-    if (secondsLeft <= 0) { void doSubmit(true); return }
+    if (secondsLeft <= 0) {
+      if (!autoSubmittedRef.current) {
+        autoSubmittedRef.current = true
+        void doSubmit(true)
+      }
+      return
+    }
     const i = setInterval(() => {
-      setSecondsLeft((s) => {
-        if (s <= 1) {
-          clearInterval(i)
-          return 0
-        }
-        return s - 1
-      })
+      setSecondsLeft((s) => (s <= 1 ? 0 : s - 1))
     }, 1000)
     return () => clearInterval(i)
   }, [loading, secondsLeft])
