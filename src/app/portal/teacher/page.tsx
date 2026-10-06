@@ -2,7 +2,7 @@
 
 /* ============================================================================
    THE TRUSTWORTHY SCHOOLS — TEACHER PORTAL
-   v3.0 — Tabs: Attendance · Scores (edit/clear) · Behavioural · CBT · News
+   v4.0 — Multi-class, locked scores, behavioural gating, passport photos
    ============================================================================ */
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
@@ -34,21 +34,10 @@ type Student = {
   class_id: string | null
   gender: 'Male' | 'Female' | null
   date_of_birth: string | null
+  passport_url?: string | null
 }
 
 type AttendanceStatus = 'Present' | 'Absent' | 'Late'
-
-type ScoreRow = {
-  id: string
-  student_id: string
-  subject_id: string
-  class_id: string | null
-  test_score: number | null
-  exam_score: number | null
-  total_score: number
-  term: string
-  session: string
-}
 
 type CbtExam = {
   id: string
@@ -88,6 +77,14 @@ type Announcement = {
   expires_at: string | null
   created_by: string | null
   created_at: string
+}
+
+type BroadsheetLock = {
+  id: string
+  class_id: string
+  term: string
+  session: string
+  locked: boolean
 }
 
 type Toast = { id: number; msg: string; tone: 'success' | 'error' | 'info' | 'warn' }
@@ -165,6 +162,16 @@ function formatDuration(seconds: number | null): string {
   return `${m}m ${String(s).padStart(2, '0')}s`
 }
 
+function StudentAvatar({ student, size = 'md' }: { student: Student; size?: 'sm' | 'md' }) {
+  const cls = size === 'sm'
+    ? 'w-8 h-10 rounded ring-1 ring-slate-200 object-cover'
+    : 'w-10 h-12 rounded-lg ring-1 ring-slate-200 object-cover'
+  if (student.passport_url) {
+    return <img src={student.passport_url} alt={student.full_name} className={cls} />
+  }
+  return <div className={`${cls} bg-slate-100 flex items-center justify-center text-[9px] text-gray-400`}>—</div>
+}
+
 /* ============================================================================
    GLOBAL STYLES
    ============================================================================ */
@@ -203,6 +210,7 @@ export default function TeacherPortal() {
   const [booting, setBooting] = useState(true)
   const [classes, setClasses] = useState<ClassRow[]>([])
   const [subjects, setSubjects] = useState<SubjectRow[]>([])
+  const [myClassIds, setMyClassIds] = useState<string[]>([])
   const [loadingMeta, setLoadingMeta] = useState(true)
   const [activeTab, setActiveTab] = useState<'attendance' | 'scores' | 'behavioural' | 'cbt' | 'news'>('attendance')
 
@@ -233,14 +241,20 @@ export default function TeacherPortal() {
     if (!teacher) return
     ;(async () => {
       setLoadingMeta(true)
-      const [c, s] = await Promise.all([
+      const [c, s, tc] = await Promise.all([
         supabase.from('classes').select('*').order('name'),
         supabase.from('subjects').select('*').order('name'),
+        supabase.from('teacher_classes').select('class_id').eq('teacher_id', teacher.id),
       ])
       if (c.error) showToast('Failed to load classes.', 'error')
       if (s.error) showToast('Failed to load subjects.', 'error')
       setClasses(c.data || [])
       setSubjects(s.data || [])
+
+      const ids = (tc.data || []).map((row: any) => row.class_id)
+      if (ids.length === 0 && teacher.assigned_class_id) ids.push(teacher.assigned_class_id)
+      setMyClassIds(ids)
+
       setLoadingMeta(false)
     })()
   }, [teacher, showToast])
@@ -266,13 +280,22 @@ export default function TeacherPortal() {
     [subjects, teacherSubjectIds]
   )
 
+  // Classes visible to this teacher
+  // - Class / both teachers → only their assigned classes (from teacher_classes)
+  // - Subject-only teachers → all classes (they teach subjects across many classes)
   const visibleClasses = useMemo(() => {
     if (!teacher) return [] as ClassRow[]
-    if ((teacher.role_type === 'class' || teacher.role_type === 'both') && teacher.assigned_class_id) {
-      return classes.filter((c) => c.id === teacher.assigned_class_id)
+    if (teacher.role_type === 'subject') {
+      return classes
     }
-    return classes
-  }, [teacher, classes])
+    return classes.filter((c) => myClassIds.includes(c.id))
+  }, [teacher, classes, myClassIds])
+
+  // Is this teacher a class teacher of at least one class? (controls Behavioural tab)
+  const isClassTeacher = useMemo(() => {
+    if (!teacher) return false
+    return teacher.role_type === 'class' || teacher.role_type === 'both'
+  }, [teacher])
 
   function handleLogout() {
     localStorage.removeItem('loggedInTeacher')
@@ -282,7 +305,7 @@ export default function TeacherPortal() {
   if (booting) return null
   if (!teacher) return null
 
-  if (!teacher.assigned_class_id && !teacher.assigned_subjects) {
+  if (!teacher.assigned_class_id && !teacher.assigned_subjects && myClassIds.length === 0) {
     return (
       <>
         <GlobalStyles />
@@ -301,6 +324,10 @@ export default function TeacherPortal() {
     )
   }
 
+  const classChips = myClassIds
+    .map((id) => classes.find((c) => c.id === id)?.name)
+    .filter(Boolean)
+
   return (
     <>
       <GlobalStyles />
@@ -309,13 +336,13 @@ export default function TeacherPortal() {
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex justify-between items-center gap-4">
             <div className="flex items-center gap-3 min-w-0">
               <span className="bg-pink-600 text-white font-black px-2.5 py-1 rounded text-[10px] uppercase tracking-wider shrink-0">
-                Teacher
+                {isClassTeacher ? 'Class Teacher' : 'Subject Teacher'}
               </span>
               <div className="min-w-0">
                 <h2 className="font-extrabold text-sm truncate">{teacher.full_name}</h2>
                 <p className="text-[10px] text-pink-300 truncate">
                   {teacher.assigned_subjects || 'General'}
-                  {teacher.assigned_class_id ? ` · ${classes.find((c) => c.id === teacher.assigned_class_id)?.name || ''}` : ''}
+                  {classChips.length > 0 ? ` · ${classChips.join(', ')}` : ''}
                 </p>
               </div>
             </div>
@@ -353,6 +380,14 @@ export default function TeacherPortal() {
                   {s.name}
                 </span>
               ))}
+              {classChips.length > 0 && teacherSubjects.length > 0 && (
+                <span className="text-[10px] text-gray-400">·</span>
+              )}
+              {classChips.map((name) => (
+                <span key={name} className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">
+                  {name}
+                </span>
+              ))}
             </div>
           </div>
         </div>
@@ -362,7 +397,9 @@ export default function TeacherPortal() {
             <div className="flex gap-1 overflow-x-auto">
               <TabBtn id="attendance" current={activeTab} onClick={setActiveTab} label="Daily Attendance" />
               <TabBtn id="scores" current={activeTab} onClick={setActiveTab} label="Score Entry" />
-              <TabBtn id="behavioural" current={activeTab} onClick={setActiveTab} label="Behavioural Ratings" />
+              {isClassTeacher && (
+                <TabBtn id="behavioural" current={activeTab} onClick={setActiveTab} label="Behavioural Ratings" />
+              )}
               <TabBtn id="cbt" current={activeTab} onClick={setActiveTab} label="CBT Results" />
               <TabBtn id="news" current={activeTab} onClick={setActiveTab} label="📢 News" />
             </div>
@@ -387,7 +424,7 @@ export default function TeacherPortal() {
                     showToast={showToast}
                   />
                 )}
-                {activeTab === 'behavioural' && (
+                {activeTab === 'behavioural' && isClassTeacher && (
                   <BehaviouralTab
                     classes={visibleClasses}
                     currentTerm={currentTerm}
@@ -468,7 +505,6 @@ function NewsTab({
     let cancelled = false
     ;(async () => {
       setLoading(true)
-
       const { data, error } = await supabase
         .from('announcements')
         .select('*')
@@ -476,12 +512,7 @@ function NewsTab({
         .order('pinned', { ascending: false })
         .order('published_at', { ascending: false })
 
-      if (error) {
-        showToast('Could not load news.', 'error')
-        setLoading(false)
-        return
-      }
-
+      if (error) { showToast('Could not load news.', 'error'); setLoading(false); return }
       if (cancelled) return
 
       const now = Date.now()
@@ -489,16 +520,13 @@ function NewsTab({
         if (a.expires_at && new Date(a.expires_at).getTime() < now) return false
         return true
       })
-
       setAnnouncements(filtered as Announcement[])
       setLoading(false)
     })()
     return () => { cancelled = true }
   }, [teacher.id, showToast])
 
-  if (loading) {
-    return <div className="text-center py-20 text-sm text-gray-500 italic">Loading news…</div>
-  }
+  if (loading) return <div className="text-center py-20 text-sm text-gray-500 italic">Loading news…</div>
 
   if (announcements.length === 0) {
     return (
@@ -809,6 +837,7 @@ function AttendanceTab({
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 text-gray-700 text-[11px] uppercase tracking-wider">
                   <tr>
+                    <th className="px-3 py-3 w-14">Photo</th>
                     <th className="px-4 py-3 font-semibold">Adm No</th>
                     <th className="px-4 py-3 font-semibold">Student Name</th>
                     <th className="px-4 py-3 font-semibold text-center">Status</th>
@@ -819,6 +848,7 @@ function AttendanceTab({
                     const current = records[s.id] || 'Present'
                     return (
                       <tr key={s.id} className="hover:bg-pink-50/50">
+                        <td className="px-3 py-2"><StudentAvatar student={s} /></td>
                         <td className="px-4 py-3 font-mono text-pink-700">{s.admission_number}</td>
                         <td className="px-4 py-3 font-medium text-[#4A2E1B]">{s.full_name}</td>
                         <td className="px-4 py-3">
@@ -867,7 +897,7 @@ function AttendanceTab({
 }
 
 /* ============================================================================
-   TAB: SCORES (with Edit mode + Clear)
+   TAB: SCORES (with Edit mode + Clear + Lock awareness)
    ============================================================================ */
 
 function ScoresTab({
@@ -889,6 +919,7 @@ function ScoresTab({
   const [saving, setSaving] = useState(false)
   const [clearing, setClearing] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
+  const [adminLocked, setAdminLocked] = useState(false)
   const [bulkPreview, setBulkPreview] = useState<{
     valid: { student_id: string; admission_no: string; name: string; ca: number; exam: number }[]
     errors: string[]
@@ -903,13 +934,25 @@ function ScoresTab({
   }, [teacherSubjects, subjectId])
 
   useEffect(() => {
-    if (!classId || !subjectId) { setStudents([]); setScores({}); return }
+    if (!classId || !subjectId) { setStudents([]); setScores({}); setAdminLocked(false); return }
     load()
   }, [classId, subjectId, currentTerm, currentSession])
 
   async function load() {
     setLoading(true)
-    setEditMode(false) // reset edit state on reload
+    setEditMode(false)
+
+    // Check if admin locked this class+term+session
+    const { data: lockRow } = await supabase
+      .from('broadsheet_locks')
+      .select('*')
+      .eq('class_id', classId)
+      .eq('term', currentTerm)
+      .eq('session', currentSession)
+      .maybeSingle()
+
+    const locked = !!(lockRow && lockRow.locked)
+    setAdminLocked(locked)
 
     const { data: stds, error: stErr } = await supabase
       .from('students')
@@ -942,7 +985,7 @@ function ScoresTab({
   }
 
   function setScore(id: string, field: 'ca' | 'exam', value: string) {
-    if (!editMode) return
+    if (!editMode || adminLocked) return
     setScores((prev) => ({
       ...prev,
       [id]: {
@@ -961,6 +1004,7 @@ function ScoresTab({
 
   async function save() {
     if (!classId || !subjectId || students.length === 0) return
+    if (adminLocked) { showToast('Scores are locked by admin. Contact the administrator.', 'error'); return }
     setSaving(true)
 
     const rows: any[] = []
@@ -1003,6 +1047,7 @@ function ScoresTab({
 
   async function clearAllScores() {
     if (!classId || !subjectId) return
+    if (adminLocked) { showToast('Scores are locked by admin.', 'error'); return }
     const subjName = teacherSubjects.find((s) => s.id === subjectId)?.name || 'Subject'
     const clsName = classes.find((c) => c.id === classId)?.name || 'Class'
 
@@ -1022,7 +1067,6 @@ function ScoresTab({
     setClearing(false)
     if (error) { showToast(`Clear failed: ${error.message}`, 'error'); return }
 
-    // Reset local state
     const empty: Record<string, { ca: string; exam: string }> = {}
     students.forEach((s) => { empty[s.id] = { ca: '', exam: '' } })
     setScores(empty)
@@ -1056,6 +1100,7 @@ function ScoresTab({
     const file = e.target.files?.[0]
     if (!file) return
     if (!classId || !subjectId) { showToast('Pick class and subject first.', 'warn'); return }
+    if (adminLocked) { showToast('Scores are locked by admin.', 'error'); e.target.value = ''; return }
 
     const reader = new FileReader()
     reader.onload = (ev) => {
@@ -1120,7 +1165,7 @@ function ScoresTab({
       next[v.student_id] = { ca: String(v.ca), exam: String(v.exam) }
     })
     setScores(next)
-    setEditMode(true)   // auto-unlock for review
+    setEditMode(true)
     showToast(`Applied ${bulkPreview.valid.length} record(s). Review and click Save.`)
     setBulkPreview(null)
   }
@@ -1153,15 +1198,21 @@ function ScoresTab({
           </div>
           <div className="flex items-end gap-2">
             <button onClick={downloadSample} className="text-xs font-bold bg-[#4A2E1B] text-white px-3.5 py-2.5 rounded-xl hover:bg-black">📥 Sample</button>
-            <label className="text-xs font-bold bg-pink-600 text-white px-3.5 py-2.5 rounded-xl hover:bg-pink-700 cursor-pointer">
+            <label className={`text-xs font-bold px-3.5 py-2.5 rounded-xl cursor-pointer ${adminLocked ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-pink-600 text-white hover:bg-pink-700'}`}>
               📤 Upload
-              <input type="file" accept=".xlsx,.xls" onChange={handleUpload} className="hidden" />
+              <input type="file" accept=".xlsx,.xls" onChange={handleUpload} disabled={adminLocked} className="hidden" />
             </label>
           </div>
         </div>
         <p className="text-[11px] text-gray-500 mt-3">
           Term: <strong className="text-[#4A2E1B]">{currentTerm}</strong> · Session: <strong className="text-[#4A2E1B]">{currentSession}</strong> · CA max {SCORE_MAX.ca}, Exam max {SCORE_MAX.exam}
         </p>
+
+        {adminLocked && (
+          <div className="mt-3 bg-rose-50 border border-rose-200 rounded-xl p-3 text-xs text-rose-800 font-bold">
+            🔒 Scores for this class + term are <strong>locked by the admin</strong>. You cannot add or edit scores. Contact the school administrator if a change is needed.
+          </div>
+        )}
       </div>
 
       {bulkPreview && (
@@ -1195,7 +1246,11 @@ function ScoresTab({
               <h3 className="text-sm font-bold text-[#4A2E1B]">
                 {teacherSubjects.find((s) => s.id === subjectId)?.name} — CA ({SCORE_MAX.ca}) + Exam ({SCORE_MAX.exam})
               </h3>
-              {editMode ? (
+              {adminLocked ? (
+                <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 ring-1 ring-rose-200 uppercase">
+                  🔒 Locked by Admin
+                </span>
+              ) : editMode ? (
                 <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 ring-1 ring-amber-200 uppercase">
                   ✏️ Editing
                 </span>
@@ -1217,6 +1272,7 @@ function ScoresTab({
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 text-gray-700 text-[11px] uppercase tracking-wider">
                   <tr>
+                    <th className="px-3 py-3 w-14">Photo</th>
                     <th className="px-4 py-3 font-semibold">Adm No</th>
                     <th className="px-4 py-3 font-semibold">Student</th>
                     <th className="px-4 py-3 font-semibold text-center">CA / {SCORE_MAX.ca}</th>
@@ -1233,18 +1289,20 @@ function ScoresTab({
                     const total = caN + exN
                     const caBad = entry.ca !== '' && (caN < 0 || caN > SCORE_MAX.ca)
                     const exBad = entry.exam !== '' && (exN < 0 || exN > SCORE_MAX.exam)
+                    const disabled = !editMode || adminLocked
                     return (
                       <tr key={s.id} className="hover:bg-pink-50/50">
+                        <td className="px-3 py-2"><StudentAvatar student={s} /></td>
                         <td className="px-4 py-3 font-mono text-pink-700">{s.admission_number}</td>
                         <td className="px-4 py-3 font-medium text-[#4A2E1B]">{s.full_name}</td>
                         <td className="px-4 py-3 text-center">
                           <input
                             type="number" min={0} max={SCORE_MAX.ca}
                             value={entry.ca}
-                            disabled={!editMode}
+                            disabled={disabled}
                             onChange={(e) => setScore(s.id, 'ca', e.target.value)}
                             className={`w-20 border rounded-lg p-2 text-center text-sm ${
-                              !editMode ? 'bg-slate-100 text-gray-600 cursor-not-allowed' :
+                              disabled ? 'bg-slate-100 text-gray-600 cursor-not-allowed' :
                               caBad ? 'border-red-400 bg-red-50' :
                               'border-pink-200'
                             }`}
@@ -1254,10 +1312,10 @@ function ScoresTab({
                           <input
                             type="number" min={0} max={SCORE_MAX.exam}
                             value={entry.exam}
-                            disabled={!editMode}
+                            disabled={disabled}
                             onChange={(e) => setScore(s.id, 'exam', e.target.value)}
                             className={`w-20 border rounded-lg p-2 text-center text-sm ${
-                              !editMode ? 'bg-slate-100 text-gray-600 cursor-not-allowed' :
+                              disabled ? 'bg-slate-100 text-gray-600 cursor-not-allowed' :
                               exBad ? 'border-red-400 bg-red-50' :
                               'border-pink-200'
                             }`}
@@ -1278,7 +1336,9 @@ function ScoresTab({
               {lastSaved && `Last saved: ${lastSaved.toLocaleTimeString()}`}
             </p>
             <div className="flex flex-wrap gap-2">
-              {editMode ? (
+              {adminLocked ? (
+                <span className="text-xs font-bold text-rose-700">Locked by Admin — contact the school office.</span>
+              ) : editMode ? (
                 <>
                   <button
                     onClick={cancelEdit}
@@ -1324,7 +1384,7 @@ function ScoresTab({
 }
 
 /* ============================================================================
-   TAB: BEHAVIOURAL RATINGS
+   TAB: BEHAVIOURAL RATINGS (class teachers only — enforced at parent level)
    ============================================================================ */
 
 function BehaviouralTab({
@@ -1464,9 +1524,12 @@ function BehaviouralTab({
                       onClick={() => setExpandedId(open ? null : s.id)}
                       className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left hover:bg-pink-50/40"
                     >
-                      <div className="min-w-0">
-                        <p className="font-bold text-sm text-[#4A2E1B] truncate">{s.full_name}</p>
-                        <p className="text-[10px] text-gray-500 font-mono">{s.admission_number}</p>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <StudentAvatar student={s} />
+                        <div className="min-w-0">
+                          <p className="font-bold text-sm text-[#4A2E1B] truncate">{s.full_name}</p>
+                          <p className="text-[10px] text-gray-500 font-mono">{s.admission_number}</p>
+                        </div>
                       </div>
                       <div className="flex items-center gap-2">
                         {done && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">Complete</span>}
@@ -1683,6 +1746,7 @@ function CbtResultsTab({
                             <table className="w-full text-left text-xs">
                               <thead className="bg-slate-100 text-gray-700 text-[10px] uppercase tracking-wider">
                                 <tr>
+                                  <th className="px-3 py-2 w-12"></th>
                                   <th className="px-3 py-2">Adm No</th>
                                   <th className="px-3 py-2">Student</th>
                                   <th className="px-3 py-2 text-center">Status</th>
@@ -1696,6 +1760,9 @@ function CbtResultsTab({
                                   const s = studentById[a.student_id]
                                   return (
                                     <tr key={a.id}>
+                                      <td className="px-3 py-2">
+                                        {s ? <StudentAvatar student={s} size="sm" /> : <div className="w-8 h-10 rounded bg-slate-100" />}
+                                      </td>
                                       <td className="px-3 py-2 font-mono text-pink-700">{s?.admission_number || '—'}</td>
                                       <td className="px-3 py-2 font-medium text-[#4A2E1B]">{s?.full_name || '—'}</td>
                                       <td className="px-3 py-2 text-center">
