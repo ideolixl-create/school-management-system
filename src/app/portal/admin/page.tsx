@@ -2,7 +2,7 @@
 
 /* ============================================================================
    THE TRUSTWORTHY SCHOOLS — ADMIN CONTROL CENTER
-   v5.0 — News/Announcements with PDF + Clear Broadsheet
+   v6.0 — Passports, Broadsheet Download, Locks, Multi-class Teachers
    ============================================================================ */
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
@@ -22,12 +22,12 @@ const SCHOOL = {
   name: 'The Trustworthy Schools',
   motto: 'Nurture for Piety',
   address: '1, CTCS Avenue, Coca Cola Junction, Unity Estate, Orimerunmu Mowe, Ogun State',
-  phones: ['08037376160', '08037173526', '08156320986'],
+  phones: ['08037376160', '08037173526', '08118411656'],
   email: 'trustworthysch16@gmail.com',
   website: 'www.thetrustworthyschools.com',
   logo: 'https://raw.githubusercontent.com/ideolixlearninghub/Trustworthy_schoolsexam/main/The%20trustworthy%20school%20logo.jpg',
   session: '2025/2026',
-  version: '5.0',
+  version: '6.0',
 }
 
 const TERMS = ['First Term', 'Second Term', 'Third Term'] as const
@@ -38,6 +38,9 @@ const GRADE_SCALE = [
   { g: 'C4', min: 55 }, { g: 'C5', min: 50 }, { g: 'C6', min: 45 },
   { g: 'D7', min: 40 }, { g: 'E8', min: 35 }, { g: 'F9', min: 0 },
 ]
+
+const PASSPORT_BUCKET = 'student-passports'
+const PASSPORT_MAX_MB = 2
 
 /* ============================================================================
    TYPES
@@ -57,6 +60,7 @@ type Teacher = {
   assigned_class_id: string | null
   assigned_subjects: string | null
   created_at?: string
+  class_ids?: string[]
 }
 
 type Student = {
@@ -68,6 +72,7 @@ type Student = {
   gender: 'Male' | 'Female' | null
   date_of_birth: string | null
   parent_phone: string | null
+  passport_url: string | null
   created_at?: string
 }
 
@@ -144,6 +149,16 @@ type ReportCardPub = {
   term: string
   session: string
   published_at: string
+}
+
+type BroadsheetLock = {
+  id: string
+  class_id: string
+  term: string
+  session: string
+  locked: boolean
+  locked_at: string | null
+  locked_by: string | null
 }
 
 type Announcement = {
@@ -298,6 +313,48 @@ function computeObjectiveScore(
 }
 
 /* ============================================================================
+   PASSPORT HELPERS
+   ============================================================================ */
+
+async function uploadPassport(file: File, admissionNumber: string): Promise<{ url: string | null; error: string | null }> {
+  try {
+    if (!file.type.startsWith('image/')) {
+      return { url: null, error: 'File must be an image (JPG, PNG, or WEBP).' }
+    }
+    if (file.size > PASSPORT_MAX_MB * 1024 * 1024) {
+      return { url: null, error: `Image too large. Max ${PASSPORT_MAX_MB} MB.` }
+    }
+
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+    const safeAdm = admissionNumber.replace(/[^A-Za-z0-9]/g, '_')
+    const path = `${safeAdm}_${Date.now()}.${ext}`
+
+    const { error: upErr } = await supabase.storage
+      .from(PASSPORT_BUCKET)
+      .upload(path, file, { contentType: file.type, upsert: false })
+
+    if (upErr) return { url: null, error: upErr.message }
+
+    const { data } = supabase.storage.from(PASSPORT_BUCKET).getPublicUrl(path)
+    return { url: data.publicUrl, error: null }
+  } catch (err: any) {
+    return { url: null, error: err.message || 'Upload failed.' }
+  }
+}
+
+async function deletePassportByUrl(url: string | null): Promise<void> {
+  if (!url) return
+  try {
+    const parts = url.split(`/${PASSPORT_BUCKET}/`)
+    if (parts.length < 2) return
+    const path = parts[1].split('?')[0]
+    await supabase.storage.from(PASSPORT_BUCKET).remove([path])
+  } catch {
+    // silent — best-effort cleanup
+  }
+}
+
+/* ============================================================================
    GLOBAL STYLES
    ============================================================================ */
 
@@ -444,6 +501,7 @@ function Console({ onLogout }: { onLogout: () => void }) {
   const [questions, setQuestions] = useState<Question[]>([])
   const [scores, setScores] = useState<ScoreRow[]>([])
   const [reportCardPub, setReportCardPub] = useState<ReportCardPub[]>([])
+  const [broadsheetLocks, setBroadsheetLocks] = useState<BroadsheetLock[]>([])
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [audit, setAudit] = useState<AuditEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -467,7 +525,7 @@ function Console({ onLogout }: { onLogout: () => void }) {
 
   const loadAll = useCallback(async () => {
     setLoading(true)
-    const [c, s, st, t, ex, q, rp, an] = await Promise.all([
+    const [c, s, st, t, ex, q, rp, an, locks, tc] = await Promise.all([
       supabase.from('classes').select('*').order('name'),
       supabase.from('subjects').select('*').order('name'),
       supabase.from('students').select('*').order('full_name'),
@@ -476,18 +534,35 @@ function Console({ onLogout }: { onLogout: () => void }) {
       supabase.from('cbt_questions').select('*').order('created_at'),
       supabase.from('report_card_publications').select('*'),
       supabase.from('announcements').select('*').order('pinned', { ascending: false }).order('published_at', { ascending: false }),
+      supabase.from('broadsheet_locks').select('*'),
+      supabase.from('teacher_classes').select('*'),
     ])
     if (c.error) showToast('Failed to load classes.', 'error')
     if (st.error) showToast('Failed to load students.', 'error')
     if (t.error) showToast('Failed to load teachers.', 'error')
+
     setClasses(c.data || [])
     setSubjects(s.data || [])
-    setStudents(st.data || [])
-    setTeachers(t.data || [])
+    setStudents((st.data || []) as Student[])
+
+    // Attach class_ids to teachers from teacher_classes
+    const tcMap = new Map<string, string[]>()
+    ;(tc.data || []).forEach((row: any) => {
+      const arr = tcMap.get(row.teacher_id) || []
+      arr.push(row.class_id)
+      tcMap.set(row.teacher_id, arr)
+    })
+    const teachersWithClasses = (t.data || []).map((tt: any) => ({
+      ...tt,
+      class_ids: tcMap.get(tt.id) || (tt.assigned_class_id ? [tt.assigned_class_id] : []),
+    }))
+    setTeachers(teachersWithClasses as Teacher[])
+
     setExams(ex.data || [])
     setQuestions(q.data || [])
     setReportCardPub((rp.data || []) as ReportCardPub[])
     setAnnouncements((an.data || []) as Announcement[])
+    setBroadsheetLocks((locks.data || []) as BroadsheetLock[])
     setLoading(false)
   }, [showToast])
 
@@ -593,6 +668,7 @@ function Console({ onLogout }: { onLogout: () => void }) {
                     scores={scores}
                     setScores={setScores}
                     reportCardPub={reportCardPub}
+                    broadsheetLocks={broadsheetLocks}
                     refresh={loadAll}
                     showToast={showToast}
                     logAction={logAction}
@@ -683,6 +759,8 @@ function Icon({ name }: { name: string }) {
     case 'download': return <svg {...c}><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
     case 'upload': return <svg {...c}><path d="M12 21V9m0 0l-4 4m4-4l4 4M5 3h14"/></svg>
     case 'refresh': return <svg {...c}><path d="M4 4v6h6M20 20v-6h-6M20 8a8 8 0 0 0-14.9-4M4 16a8 8 0 0 0 14.9 4"/></svg>
+    case 'lock': return <svg {...c}><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 1 1 8 0v4"/></svg>
+    case 'unlock': return <svg {...c}><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>
     default: return null
   }
 }
@@ -695,10 +773,11 @@ function DashboardTab({ students, teachers, exams, switchTab }: {
   students: Student[]; teachers: Teacher[]; exams: CbtExam[]; switchTab: (t: Tab) => void
 }) {
   const live = exams.filter((e) => examDerivedStatus(e) === 'live').length
+  const withPhoto = students.filter((s) => s.passport_url).length
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Students" value={students.length} sub="Enrolled" />
+        <StatCard label="Students" value={students.length} sub={`${withPhoto} with passport`} />
         <StatCard label="Teachers" value={teachers.length} sub="Active staff" />
         <StatCard label="Exams" value={exams.length} sub={`${live} live now`} />
         <StatCard label="Classes" value={new Set(students.map((s) => s.class_id).filter(Boolean)).size} sub="With students" />
@@ -753,6 +832,9 @@ function StudentsTab({
     admission_number: '', full_name: '', password: '',
     class_id: '', gender: 'Male' as 'Male' | 'Female', date_of_birth: '', parent_phone: '',
   })
+  const [formPhoto, setFormPhoto] = useState<File | null>(null)
+  const [formPhotoPreview, setFormPhotoPreview] = useState<string>('')
+
   const [q, setQ] = useState('')
   const [filterClass, setFilterClass] = useState('')
   const [saving, setSaving] = useState(false)
@@ -763,11 +845,34 @@ function StudentsTab({
 
   const classById = useMemo(() => Object.fromEntries(classes.map((c) => [c.id, c.name])), [classes])
 
+  function handleFormPhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    if (!f) return
+    if (!f.type.startsWith('image/')) { showToast('Only images are allowed.', 'error'); e.target.value = ''; return }
+    if (f.size > PASSPORT_MAX_MB * 1024 * 1024) { showToast(`Max ${PASSPORT_MAX_MB} MB.`, 'error'); e.target.value = ''; return }
+    setFormPhoto(f)
+    setFormPhotoPreview(URL.createObjectURL(f))
+  }
+
   async function addStudent(e: React.FormEvent) {
     e.preventDefault()
     if (!form.class_id) { showToast('Pick a class.', 'error'); return }
     if (form.date_of_birth && !isValidDate(form.date_of_birth)) { showToast('Invalid date of birth.', 'error'); return }
+
     setSaving(true)
+
+    // Upload passport first (if provided)
+    let passport_url: string | null = null
+    if (formPhoto) {
+      const { url, error } = await uploadPassport(formPhoto, form.admission_number.trim())
+      if (error || !url) {
+        showToast(`Passport upload failed: ${error}`, 'error')
+        setSaving(false)
+        return
+      }
+      passport_url = url
+    }
+
     const { error } = await supabase.from('students').insert([{
       admission_number: form.admission_number.trim(),
       full_name: toTitleCase(form.full_name.trim()),
@@ -776,16 +881,30 @@ function StudentsTab({
       gender: form.gender,
       date_of_birth: form.date_of_birth || null,
       parent_phone: form.parent_phone.trim() || null,
+      passport_url,
     }])
     setSaving(false)
     if (error) { showToast(`Save failed: ${error.message}`, 'error'); return }
     showToast(`Student ${form.full_name} registered.`)
-    logAction('Student registered', `${form.full_name} · ${form.admission_number}`)
+    logAction('Student registered', `${form.full_name} · ${form.admission_number}${passport_url ? ' · photo' : ''}`)
     setForm({ admission_number: '', full_name: '', password: '', class_id: '', gender: 'Male', date_of_birth: '', parent_phone: '' })
+    setFormPhoto(null)
+    setFormPhotoPreview('')
     refresh()
   }
 
-  async function saveEdit(updated: Student) {
+  async function saveEdit(updated: Student, newPhoto: File | null) {
+    // Handle photo upload/replacement
+    let passport_url = updated.passport_url
+
+    if (newPhoto) {
+      // Delete the old one if exists
+      if (updated.passport_url) await deletePassportByUrl(updated.passport_url)
+      const { url, error } = await uploadPassport(newPhoto, updated.admission_number)
+      if (error || !url) { showToast(`Photo upload failed: ${error}`, 'error'); return false }
+      passport_url = url
+    }
+
     const { error } = await supabase.from('students').update({
       full_name: updated.full_name,
       class_id: updated.class_id,
@@ -793,6 +912,7 @@ function StudentsTab({
       date_of_birth: updated.date_of_birth,
       parent_phone: updated.parent_phone,
       password: updated.password,
+      passport_url,
     }).eq('id', updated.id)
     if (error) { showToast(`Update failed: ${error.message}`, 'error'); return false }
     showToast(`Student ${updated.full_name} updated.`)
@@ -813,7 +933,8 @@ function StudentsTab({
   }
 
   function removeStudent(s: Student) {
-    askConfirm('Remove Student?', `Permanently remove ${s.full_name} (${s.admission_number})?`, async () => {
+    askConfirm('Remove Student?', `Permanently remove ${s.full_name} (${s.admission_number})? Photo will also be deleted.`, async () => {
+      if (s.passport_url) await deletePassportByUrl(s.passport_url)
       const { error } = await supabase.from('students').delete().eq('id', s.id)
       if (error) { showToast(`Delete failed: ${error.message}`, 'error'); return }
       showToast('Student removed.', 'warn')
@@ -913,6 +1034,7 @@ function StudentsTab({
             gender: gender === 'Female' ? 'Female' : 'Male',
             date_of_birth: dob,
             parent_phone: phone || null,
+            passport_url: null,
           })
         })
 
@@ -949,7 +1071,7 @@ function StudentsTab({
         <div className="px-6 py-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="font-semibold text-[#4A2E1B]">Bulk Student Upload</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Sample includes Date of Birth column.</p>
+            <p className="text-xs text-gray-500 mt-0.5">Add photos individually via Edit after upload.</p>
           </div>
           <div className="flex gap-2">
             <button onClick={downloadSample} className="inline-flex items-center gap-2 text-xs font-semibold bg-[#4A2E1B] text-white px-3.5 py-2 rounded-lg hover:bg-black">
@@ -1001,6 +1123,31 @@ function StudentsTab({
             <h2 className="font-semibold text-[#4A2E1B]">Register Single Student</h2>
           </div>
           <form onSubmit={addStudent} className="p-5 space-y-3.5">
+            {/* Passport preview + upload */}
+            <div className="flex items-center gap-4">
+              <div className="w-20 h-24 rounded-xl bg-slate-100 ring-1 ring-slate-200 flex items-center justify-center overflow-hidden shrink-0">
+                {formPhotoPreview ? (
+                  <img src={formPhotoPreview} alt="Preview" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-[10px] text-gray-400 text-center px-1">No photo</span>
+                )}
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs font-bold text-[#4A2E1B] mb-1">Passport Photo (optional)</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFormPhotoChange}
+                  className="w-full text-[11px] file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[11px] file:font-bold file:bg-[#4A2E1B] file:text-white hover:file:bg-black bg-white border border-pink-200 rounded-xl p-1"
+                />
+                {formPhoto && (
+                  <button type="button" onClick={() => { setFormPhoto(null); setFormPhotoPreview('') }} className="text-[10px] font-bold text-red-600 mt-1 underline">
+                    Remove photo
+                  </button>
+                )}
+              </div>
+            </div>
+
             <FormField label="Admission Number" required>
               <input required value={form.admission_number} onChange={(e) => setForm({ ...form, admission_number: e.target.value })} placeholder="TTS/2026/050" className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl font-mono outline-none" />
             </FormField>
@@ -1054,6 +1201,7 @@ function StudentsTab({
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 text-gray-700 text-[11px] uppercase tracking-wider sticky top-0">
                 <tr>
+                  <th className="px-3 py-3 w-14">Photo</th>
                   <th className="px-4 py-3">Adm No</th>
                   <th className="px-4 py-3">Full Name</th>
                   <th className="px-4 py-3">Class</th>
@@ -1065,6 +1213,15 @@ function StudentsTab({
               <tbody className="divide-y divide-slate-100">
                 {filtered.map((s) => (
                   <tr key={s.id} className="hover:bg-pink-50/50">
+                    <td className="px-3 py-2">
+                      {s.passport_url ? (
+                        <img src={s.passport_url} alt={s.full_name} className="w-10 h-12 object-cover rounded-lg ring-1 ring-slate-200" />
+                      ) : (
+                        <div className="w-10 h-12 rounded-lg bg-slate-100 ring-1 ring-slate-200 flex items-center justify-center text-[9px] text-gray-400">
+                          None
+                        </div>
+                      )}
+                    </td>
                     <td className="px-4 py-3 font-mono text-pink-700">{s.admission_number}</td>
                     <td className="px-4 py-3 font-medium text-[#4A2E1B]">{s.full_name}</td>
                     <td className="px-4 py-3">{classById[s.class_id || ''] || '—'}</td>
@@ -1077,7 +1234,7 @@ function StudentsTab({
                     </td>
                   </tr>
                 ))}
-                {filtered.length === 0 && <tr><td colSpan={6} className="px-4 py-12 text-center text-xs text-gray-400 italic">No students found.</td></tr>}
+                {filtered.length === 0 && <tr><td colSpan={7} className="px-4 py-12 text-center text-xs text-gray-400 italic">No students found.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -1100,17 +1257,27 @@ function EditStudentModal({
 }: {
   student: Student; classes: ClassRow[]
   onClose: () => void
-  onSave: (s: Student) => Promise<boolean>
+  onSave: (s: Student, newPhoto: File | null) => Promise<boolean>
 }) {
   const [draft, setDraft] = useState<Student>({ ...student })
+  const [newPhoto, setNewPhoto] = useState<File | null>(null)
+  const [photoPreview, setPhotoPreview] = useState<string>(student.passport_url || '')
   const [saving, setSaving] = useState(false)
+
+  function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    if (!f) return
+    if (!f.type.startsWith('image/')) return
+    if (f.size > PASSPORT_MAX_MB * 1024 * 1024) return
+    setNewPhoto(f)
+    setPhotoPreview(URL.createObjectURL(f))
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!draft.full_name.trim() || !draft.class_id) return
-    if (draft.date_of_birth && !isValidDate(draft.date_of_birth)) return
-    setSaving(true)
-    const ok = await onSave({ ...draft, full_name: toTitleCase(draft.full_name.trim()) })
+    if (draft.date_of_birth && !isValidDate(draft.date_of_birth)) return    setSaving(true)
+    const ok = await onSave({ ...draft, full_name: toTitleCase(draft.full_name.trim()) }, newPhoto)
     setSaving(false)
     if (ok) onClose()
   }
@@ -1126,6 +1293,28 @@ function EditStudentModal({
           <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-gray-500">✕</button>
         </div>
         <form onSubmit={submit} className="p-6 space-y-4">
+          {/* Photo */}
+          <div className="flex items-center gap-4">
+            <div className="w-24 h-28 rounded-xl bg-slate-100 ring-1 ring-slate-200 flex items-center justify-center overflow-hidden shrink-0">
+              {photoPreview ? (
+                <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-[10px] text-gray-400 text-center px-1">No photo</span>
+              )}
+            </div>
+            <div className="flex-1">
+              <label className="block text-xs font-bold text-[#4A2E1B] mb-1">
+                {student.passport_url ? 'Replace Photo' : 'Add Photo'}
+              </label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handlePhotoChange}
+                className="w-full text-[11px] file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[11px] file:font-bold file:bg-[#4A2E1B] file:text-white hover:file:bg-black bg-white border border-pink-200 rounded-xl p-1"
+              />
+            </div>
+          </div>
+
           <FormField label="Full Name" required>
             <input required value={draft.full_name} onChange={(e) => setDraft({ ...draft, full_name: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
           </FormField>
@@ -1154,7 +1343,7 @@ function EditStudentModal({
             <input value={draft.parent_phone || ''} onChange={(e) => setDraft({ ...draft, parent_phone: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
           </FormField>
           <FormField label="Password" required>
-            <input required value={draft.password || ''} onChange={(e) => setDraft({ ...draft, password: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none font-mono" />
+            <input required value={draft.password || ''} onChange={(e) => setDraft({ ...draft, password: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl font-mono outline-none" />
           </FormField>
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
             <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl text-xs font-bold text-gray-700 hover:bg-slate-100">Cancel</button>
@@ -1167,7 +1356,6 @@ function EditStudentModal({
     </div>
   )
 }
-
 
 /* ============================================================================
    TAB: TEACHERS
@@ -1184,39 +1372,78 @@ function TeachersTab({
   const [form, setForm] = useState({
     staff_id: '', full_name: '', email: '', password: '', phone: '',
     role_type: 'subject' as 'subject' | 'class' | 'both',
-    assigned_class_id: '', assigned_subjects: '',
+    assigned_class_ids: [] as string[],
+    assigned_subjects: '',
   })
   const [saving, setSaving] = useState(false)
   const [editTarget, setEditTarget] = useState<Teacher | null>(null)
 
   const classById = useMemo(() => Object.fromEntries(classes.map((c) => [c.id, c.name])), [classes])
 
+  function toggleClass(id: string) {
+    setForm((prev) => {
+      const has = prev.assigned_class_ids.includes(id)
+      return {
+        ...prev,
+        assigned_class_ids: has
+          ? prev.assigned_class_ids.filter((x) => x !== id)
+          : [...prev.assigned_class_ids, id],
+      }
+    })
+  }
+
   async function addTeacher(e: React.FormEvent) {
     e.preventDefault()
-    if ((form.role_type === 'class' || form.role_type === 'both') && !form.assigned_class_id) {
-      showToast('Pick an assigned class.', 'error'); return
+    if ((form.role_type === 'class' || form.role_type === 'both') && form.assigned_class_ids.length === 0) {
+      showToast('Pick at least one assigned class.', 'error'); return
     }
     setSaving(true)
-    const { error } = await supabase.from('teachers').insert([{
+
+    const primaryClass = form.assigned_class_ids[0] || null
+
+    const { data: inserted, error } = await supabase.from('teachers').insert([{
       staff_id: form.staff_id.trim(),
       full_name: toTitleCase(form.full_name.trim()),
       email: form.email.trim(),
       password: form.password.trim(),
       phone: form.phone.trim() || null,
       role_type: form.role_type,
-      assigned_class_id: form.role_type === 'subject' ? null : form.assigned_class_id,
+      assigned_class_id: form.role_type === 'subject' ? null : primaryClass,
       assigned_subjects: form.assigned_subjects.trim() || null,
-    }])
+    }]).select().single()
+
+    if (error || !inserted) {
+      setSaving(false)
+      showToast(`Save failed: ${error?.message || 'unknown error'}`, 'error')
+      return
+    }
+
+    // Insert class assignments (multi-class)
+    if (form.role_type !== 'subject' && form.assigned_class_ids.length > 0) {
+      const rows = form.assigned_class_ids.map((cid, i) => ({
+        teacher_id: inserted.id,
+        class_id: cid,
+        is_primary: i === 0,
+      }))
+      const { error: tcErr } = await supabase.from('teacher_classes').insert(rows)
+      if (tcErr) {
+        setSaving(false)
+        showToast(`Teacher created but class assignment failed: ${tcErr.message}`, 'warn')
+        refresh()
+        return
+      }
+    }
+
     setSaving(false)
-    if (error) { showToast(`Save failed: ${error.message}`, 'error'); return }
     showToast(`Teacher ${form.full_name} registered.`)
     logAction('Teacher registered', `${form.full_name} · ${form.staff_id}`)
-    setForm({ staff_id: '', full_name: '', email: '', password: '', phone: '', role_type: 'subject', assigned_class_id: '', assigned_subjects: '' })
+    setForm({ staff_id: '', full_name: '', email: '', password: '', phone: '', role_type: 'subject', assigned_class_ids: [], assigned_subjects: '' })
     refresh()
   }
 
-  async function saveEdit(updated: Teacher): Promise<boolean> {
-    const assigned_class_id = (updated.role_type === 'subject') ? null : updated.assigned_class_id
+  async function saveEdit(updated: Teacher, newClassIds: string[]): Promise<boolean> {
+    const assigned_class_id = (updated.role_type === 'subject') ? null : (newClassIds[0] || null)
+
     const { error } = await supabase.from('teachers').update({
       full_name: updated.full_name,
       email: updated.email,
@@ -1226,9 +1453,25 @@ function TeachersTab({
       assigned_class_id,
       assigned_subjects: updated.assigned_subjects,
     }).eq('id', updated.id)
+
     if (error) { showToast(`Update failed: ${error.message}`, 'error'); return false }
+
+    // Refresh teacher_classes: delete all, insert new
+    const { error: delErr } = await supabase.from('teacher_classes').delete().eq('teacher_id', updated.id)
+    if (delErr) { showToast(`Teacher updated but class links failed: ${delErr.message}`, 'warn'); refresh(); return true }
+
+    if (updated.role_type !== 'subject' && newClassIds.length > 0) {
+      const rows = newClassIds.map((cid, i) => ({
+        teacher_id: updated.id,
+        class_id: cid,
+        is_primary: i === 0,
+      }))
+      const { error: insErr } = await supabase.from('teacher_classes').insert(rows)
+      if (insErr) { showToast(`Teacher updated but class links failed: ${insErr.message}`, 'warn'); refresh(); return true }
+    }
+
     showToast(`Teacher ${updated.full_name} updated.`)
-    logAction('Teacher updated', `${updated.full_name}`)
+    logAction('Teacher updated', `${updated.full_name} · ${newClassIds.length} class(es)`)
     refresh()
     return true
   }
@@ -1289,19 +1532,39 @@ function TeachersTab({
               <option value="both">Class &amp; Subject Teacher</option>
             </select>
           </FormField>
+
           {form.role_type !== 'subject' && (
-            <FormField label="Assigned Class" required>
-              <select value={form.assigned_class_id} onChange={(e) => setForm({ ...form, assigned_class_id: e.target.value })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none">
-                <option value="">-- Choose Class --</option>
-                {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </FormField>
+            <div>
+              <label className="block text-xs font-bold text-[#4A2E1B] mb-1">
+                Assigned Classes <span className="text-pink-600">*</span>
+                <span className="text-[10px] text-gray-500 font-normal ml-1">(tick all that apply — first one becomes primary)</span>
+              </label>
+              <div className="max-h-40 overflow-y-auto border border-pink-200 rounded-xl p-2 space-y-1 bg-white">
+                {classes.map((c) => {
+                  const idx = form.assigned_class_ids.indexOf(c.id)
+                  return (
+                    <label key={c.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-pink-50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={idx !== -1}
+                        onChange={() => toggleClass(c.id)}
+                        className="w-4 h-4 rounded border-pink-300 text-pink-600 focus:ring-pink-500"
+                      />
+                      <span className="text-sm text-[#4A2E1B] flex-1">{c.name}</span>
+                      {idx === 0 && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-pink-100 text-pink-700">PRIMARY</span>}
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
           )}
+
           {form.role_type !== 'class' && (
             <FormField label="Assigned Subjects (comma-separated)">
               <input value={form.assigned_subjects} onChange={(e) => setForm({ ...form, assigned_subjects: e.target.value })} placeholder="Mathematics, Physics" className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
             </FormField>
           )}
+
           <button type="submit" disabled={saving} className="w-full bg-pink-600 hover:bg-pink-700 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50">
             {saving ? 'Saving…' : 'Register Teacher'}
           </button>
@@ -1320,26 +1583,39 @@ function TeachersTab({
                 <th className="px-4 py-3">Staff ID</th>
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Role</th>
-                <th className="px-4 py-3">Class</th>
+                <th className="px-4 py-3">Classes</th>
                 <th className="px-4 py-3">Subjects</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {teachers.map((t) => (
-                <tr key={t.id} className="hover:bg-pink-50/50">
-                  <td className="px-4 py-3 font-mono text-pink-700">{t.staff_id}</td>
-                  <td className="px-4 py-3 font-medium text-[#4A2E1B]">{t.full_name}</td>
-                  <td className="px-4 py-3"><span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-pink-50 text-pink-700 ring-1 ring-pink-200 uppercase">{ROLE_LABEL[t.role_type]}</span></td>
-                  <td className="px-4 py-3 text-gray-700">{t.assigned_class_id ? classById[t.assigned_class_id] || '—' : '—'}</td>
-                  <td className="px-4 py-3 text-gray-700">{t.assigned_subjects || '—'}</td>
-                  <td className="px-4 py-3 text-right whitespace-nowrap">
-                    <button onClick={() => setEditTarget(t)} className="text-blue-600 hover:text-blue-700 font-semibold text-[11px] mr-3">Edit</button>
-                    <button onClick={() => resetPassword(t)} className="text-amber-600 hover:text-amber-700 font-semibold text-[11px] mr-3">Reset PW</button>
-                    <button onClick={() => removeTeacher(t)} className="text-red-600 hover:text-red-700 font-semibold text-[11px]">Remove</button>
-                  </td>
-                </tr>
-              ))}
+              {teachers.map((t) => {
+                const classNames = (t.class_ids || []).map((id) => classById[id]).filter(Boolean)
+                return (
+                  <tr key={t.id} className="hover:bg-pink-50/50">
+                    <td className="px-4 py-3 font-mono text-pink-700">{t.staff_id}</td>
+                    <td className="px-4 py-3 font-medium text-[#4A2E1B]">{t.full_name}</td>
+                    <td className="px-4 py-3"><span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-pink-50 text-pink-700 ring-1 ring-pink-200 uppercase">{ROLE_LABEL[t.role_type]}</span></td>
+                    <td className="px-4 py-3 text-gray-700">
+                      {classNames.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {classNames.map((n, i) => (
+                            <span key={i} className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-gray-700 ring-1 ring-slate-200">{n}</span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-gray-700">{t.assigned_subjects || '—'}</td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <button onClick={() => setEditTarget(t)} className="text-blue-600 hover:text-blue-700 font-semibold text-[11px] mr-3">Edit</button>
+                      <button onClick={() => resetPassword(t)} className="text-amber-600 hover:text-amber-700 font-semibold text-[11px] mr-3">Reset PW</button>
+                      <button onClick={() => removeTeacher(t)} className="text-red-600 hover:text-red-700 font-semibold text-[11px]">Remove</button>
+                    </td>
+                  </tr>
+                )
+              })}
               {teachers.length === 0 && <tr><td colSpan={6} className="px-4 py-12 text-center text-xs text-gray-400 italic">No teachers registered yet.</td></tr>}
             </tbody>
           </table>
@@ -1353,26 +1629,33 @@ function TeachersTab({
   )
 }
 
-/* ============================================================================
-   EDIT TEACHER MODAL
-   ============================================================================ */
-
 function EditTeacherModal({
   teacher, classes, onClose, onSave,
 }: {
   teacher: Teacher; classes: ClassRow[]
   onClose: () => void
-  onSave: (t: Teacher) => Promise<boolean>
+  onSave: (t: Teacher, newClassIds: string[]) => Promise<boolean>
 }) {
   const [draft, setDraft] = useState<Teacher>({ ...teacher })
+  const [classIds, setClassIds] = useState<string[]>(teacher.class_ids || (teacher.assigned_class_id ? [teacher.assigned_class_id] : []))
   const [saving, setSaving] = useState(false)
+
+  function toggleClass(id: string) {
+    setClassIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!draft.full_name.trim() || !draft.email.trim()) return
-    if ((draft.role_type === 'class' || draft.role_type === 'both') && !draft.assigned_class_id) return
+    if ((draft.role_type === 'class' || draft.role_type === 'both') && classIds.length === 0) {
+      alert('Pick at least one class.')
+      return
+    }
     setSaving(true)
-    const ok = await onSave({ ...draft, full_name: toTitleCase(draft.full_name.trim()), email: draft.email.trim() })
+    const ok = await onSave(
+      { ...draft, full_name: toTitleCase(draft.full_name.trim()), email: draft.email.trim() },
+      draft.role_type === 'subject' ? [] : classIds
+    )
     setSaving(false)
     if (ok) onClose()
   }
@@ -1398,15 +1681,12 @@ function EditTeacherModal({
             <input value={draft.phone || ''} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
           </FormField>
           <FormField label="Password" required>
-            <input required value={draft.password || ''} onChange={(e) => setDraft({ ...draft, password: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none font-mono" />
+            <input required value={draft.password || ''} onChange={(e) => setDraft({ ...draft, password: e.target.value })} className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl font-mono outline-none" />
           </FormField>
           <FormField label="Role Type" required>
             <select
               value={draft.role_type}
-              onChange={(e) => {
-                const role_type = e.target.value as Teacher['role_type']
-                setDraft({ ...draft, role_type, assigned_class_id: role_type === 'subject' ? null : draft.assigned_class_id })
-              }}
+              onChange={(e) => setDraft({ ...draft, role_type: e.target.value as Teacher['role_type'] })}
               className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none"
             >
               <option value="subject">Subject Teacher</option>
@@ -1415,12 +1695,28 @@ function EditTeacherModal({
             </select>
           </FormField>
           {draft.role_type !== 'subject' && (
-            <FormField label="Assigned Class" required>
-              <select value={draft.assigned_class_id || ''} onChange={(e) => setDraft({ ...draft, assigned_class_id: e.target.value })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none">
-                <option value="">-- Choose Class --</option>
-                {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </FormField>
+            <div>
+              <label className="block text-xs font-bold text-[#4A2E1B] mb-1">
+                Assigned Classes <span className="text-pink-600">*</span>
+              </label>
+              <div className="max-h-40 overflow-y-auto border border-pink-200 rounded-xl p-2 space-y-1 bg-white">
+                {classes.map((c) => {
+                  const idx = classIds.indexOf(c.id)
+                  return (
+                    <label key={c.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-pink-50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={idx !== -1}
+                        onChange={() => toggleClass(c.id)}
+                        className="w-4 h-4 rounded border-pink-300 text-pink-600 focus:ring-pink-500"
+                      />
+                      <span className="text-sm text-[#4A2E1B] flex-1">{c.name}</span>
+                      {idx === 0 && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-pink-100 text-pink-700">PRIMARY</span>}
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
           )}
           {draft.role_type !== 'class' && (
             <FormField label="Assigned Subjects (comma-separated)">
@@ -1556,8 +1852,6 @@ function ExamsTab({
     />
   )
 }
-
-/* -------------------- EXAM LIST -------------------- */
 
 function ExamList({
   exams, classes, subjects, questions, onOpen, refresh, showToast, logAction, askConfirm,
@@ -1781,8 +2075,6 @@ function ExamList({
   )
 }
 
-/* -------------------- EXAM DETAIL -------------------- */
-
 function ExamDetail({
   exam, classes, subjects, questions, onBack, refresh, showToast, logAction, askConfirm,
 }: {
@@ -1923,8 +2215,6 @@ function ExamDetail({
   )
 }
 
-/* -------------------- SETUP SECTION -------------------- */
-
 function SetupSection({
   exam, totalMarks, objectiveCount, theoryCount, onSave, showToast,
 }: {
@@ -2042,8 +2332,6 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
     </label>
   )
 }
-
-/* -------------------- QUESTIONS SECTION -------------------- */
 
 function QuestionsSection({
   examId, exam, questions, onReload, showToast, onDelete,
@@ -2277,8 +2565,6 @@ function QuestionsSection({
   )
 }
 
-/* -------------------- PREVIEW SECTION -------------------- */
-
 function PreviewSection({ exam, questions }: { exam: CbtExam; questions: Question[] }) {
   return (
     <div className="space-y-4 max-w-3xl">
@@ -2379,6 +2665,7 @@ function SubmissionsTab({
         <table className="w-full text-left text-xs">
           <thead className="bg-slate-50 text-gray-700 text-[11px] uppercase tracking-wider">
             <tr>
+              <th className="px-3 py-3 w-12"></th>
               <th className="px-5 py-3">Student</th>
               <th className="px-5 py-3 text-center">Status</th>
               <th className="px-5 py-3 text-center">Score</th>
@@ -2388,14 +2675,21 @@ function SubmissionsTab({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {loading && <tr><td colSpan={6} className="px-5 py-12 text-center text-xs text-gray-400 italic">Loading…</td></tr>}
-            {!loading && !examId && <tr><td colSpan={6} className="px-5 py-12 text-center text-xs text-gray-400 italic">Pick an exam above.</td></tr>}
-            {!loading && examId && attempts.length === 0 && <tr><td colSpan={6} className="px-5 py-12 text-center text-xs text-gray-400 italic">No submissions yet.</td></tr>}
+            {loading && <tr><td colSpan={7} className="px-5 py-12 text-center text-xs text-gray-400 italic">Loading…</td></tr>}
+            {!loading && !examId && <tr><td colSpan={7} className="px-5 py-12 text-center text-xs text-gray-400 italic">Pick an exam above.</td></tr>}
+            {!loading && examId && attempts.length === 0 && <tr><td colSpan={7} className="px-5 py-12 text-center text-xs text-gray-400 italic">No submissions yet.</td></tr>}
             {!loading && attempts.map((a) => {
               const s = studentById[a.student_id]
               const pct = a.total_marks ? Math.round(((a.score || 0) / a.total_marks) * 100) : 0
               return (
                 <tr key={a.id}>
+                  <td className="px-3 py-2">
+                    {s?.passport_url ? (
+                      <img src={s.passport_url} alt={s.full_name} className="w-8 h-10 object-cover rounded ring-1 ring-slate-200" />
+                    ) : (
+                      <div className="w-8 h-10 rounded bg-slate-100 ring-1 ring-slate-200" />
+                    )}
+                  </td>
                   <td className="px-5 py-3 font-medium text-[#4A2E1B]">{s?.full_name || '—'} <span className="text-gray-500 font-mono text-[10px]">{s?.admission_number}</span></td>
                   <td className="px-5 py-3 text-center">
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ring-1 uppercase ${
@@ -2653,6 +2947,7 @@ function LiveMonitorTab({
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-50 text-gray-700 text-[11px] uppercase tracking-wider sticky top-0">
                     <tr>
+                      <th className="px-3 py-3 w-12"></th>
                       <th className="px-4 py-3">Student</th>
                       <th className="px-4 py-3">Adm No</th>
                       <th className="px-4 py-3 text-center">Status</th>
@@ -2664,7 +2959,7 @@ function LiveMonitorTab({
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {classStudents.length === 0 && (
-                      <tr><td colSpan={7} className="px-4 py-12 text-center text-xs text-gray-400 italic">No students in this class.</td></tr>
+                      <tr><td colSpan={8} className="px-4 py-12 text-center text-xs text-gray-400 italic">No students in this class.</td></tr>
                     )}
                     {classStudents.map((student) => {
                       const att = attempts.find((a) => a.student_id === student.id)
@@ -2685,6 +2980,13 @@ function LiveMonitorTab({
                         'bg-emerald-50 text-emerald-700 ring-emerald-200'
                       return (
                         <tr key={student.id} className="hover:bg-pink-50/50">
+                          <td className="px-3 py-2">
+                            {student.passport_url ? (
+                              <img src={student.passport_url} alt={student.full_name} className="w-8 h-10 object-cover rounded ring-1 ring-slate-200" />
+                            ) : (
+                              <div className="w-8 h-10 rounded bg-slate-100 ring-1 ring-slate-200" />
+                            )}
+                          </td>
                           <td className="px-4 py-3 font-medium text-[#4A2E1B]">{student.full_name}</td>
                           <td className="px-4 py-3 font-mono text-pink-700">{student.admission_number}</td>
                           <td className="px-4 py-3 text-center">
@@ -2757,10 +3059,6 @@ function LiveStat({ label, value, tone, isText }: { label: string; value: number
     </div>
   )
 }
-
-/* ============================================================================
-   THEORY MARKING PANEL
-   ============================================================================ */
 
 function TheoryMarkingPanel({
   exam, questions, attempts, students, objectiveQuestions, showToast, logAction, onReload,
@@ -2835,9 +3133,16 @@ function TheoryMarkingPanel({
                 onClick={() => { setOpenAttemptId(open ? null : attempt.id); if (!open) initDraft(attempt) }}
                 className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left hover:bg-pink-50/40"
               >
-                <div className="min-w-0">
-                  <p className="font-bold text-sm text-[#4A2E1B] truncate">{student?.full_name || '—'}</p>
-                  <p className="text-[10px] text-gray-500 font-mono">{student?.admission_number}</p>
+                <div className="flex items-center gap-3 min-w-0">
+                  {student?.passport_url ? (
+                    <img src={student.passport_url} alt={student.full_name} className="w-10 h-12 object-cover rounded-lg ring-1 ring-slate-200 shrink-0" />
+                  ) : (
+                    <div className="w-10 h-12 rounded-lg bg-slate-100 ring-1 ring-slate-200 shrink-0" />
+                  )}
+                  <div className="min-w-0">
+                    <p className="font-bold text-sm text-[#4A2E1B] truncate">{student?.full_name || '—'}</p>
+                    <p className="text-[10px] text-gray-500 font-mono">{student?.admission_number}</p>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ring-1 uppercase ${attempt.status === 'graded' ? 'bg-purple-50 text-purple-700 ring-purple-200' : 'bg-amber-50 text-amber-700 ring-amber-200'}`}>
@@ -2924,17 +3229,17 @@ function TheoryMarkingPanel({
   )
 }
 
-
 /* ============================================================================
-   TAB: BROADSHEET + REPORT CARD PUBLISH
+   TAB: BROADSHEET (Download + Lock)
    ============================================================================ */
 
 function BroadsheetTab({
-  classes, subjects, students, scores, setScores, reportCardPub, refresh, showToast, logAction, askConfirm,
+  classes, subjects, students, scores, setScores, reportCardPub, broadsheetLocks, refresh, showToast, logAction, askConfirm,
 }: {
   classes: ClassRow[]; subjects: SubjectRow[]; students: Student[]
   scores: ScoreRow[]; setScores: (s: ScoreRow[]) => void
   reportCardPub: ReportCardPub[]
+  broadsheetLocks: BroadsheetLock[]
   refresh: () => void
   showToast: (m: string, t?: Toast['tone']) => void
   logAction: (a: string, d?: string) => void
@@ -2969,7 +3274,7 @@ function BroadsheetTab({
 
   const rows = useMemo(() => {
     const byStudent = new Map<string, {
-      id: string; name: string; admissionNo: string; age: number | null
+      id: string; name: string; admissionNo: string; age: number | null; passport: string | null
       subjects: Record<string, { test: number | null; exam: number | null; total: number }>
       total: number; subjectsOffered: number; percentage: number
     }>()
@@ -2977,7 +3282,7 @@ function BroadsheetTab({
     classStudents.forEach((st) => {
       byStudent.set(st.id, {
         id: st.id, name: st.full_name, admissionNo: st.admission_number,
-        age: ageFromDob(st.date_of_birth),
+        age: ageFromDob(st.date_of_birth), passport: st.passport_url,
         subjects: {}, total: 0, subjectsOffered: 0, percentage: 0,
       })
     })
@@ -3020,6 +3325,10 @@ function BroadsheetTab({
 
   const isPublished = reportCardPub.some(
     (r) => r.class_id === selectedClass && r.term === selectedTerm && r.session === session
+  )
+
+  const isLocked = broadsheetLocks.some(
+    (l) => l.class_id === selectedClass && l.term === selectedTerm && l.session === session && l.locked
   )
 
   function downloadTemplate() {
@@ -3123,6 +3432,46 @@ function BroadsheetTab({
     e.target.value = ''
   }
 
+  function downloadBroadsheet() {
+    if (!selectedClass || rows.length === 0) { showToast('No broadsheet data to download.', 'warn'); return }
+
+    // Header row
+    const header: string[] = ['#', 'Admission No', 'Name', 'Age']
+    classSubjectIds.forEach((sid) => header.push(subjectById[sid] || 'Subject'))
+    header.push('Total', 'Average', 'Grade', 'Position')
+
+    const dataRows = rows.map((r, idx) => {
+      const { grade } = gradeFromTotal(r.percentage)
+      const row: any[] = [idx + 1, r.admissionNo, r.name, r.age ?? '']
+      classSubjectIds.forEach((sid) => {
+        const s = r.subjects[sid]
+        row.push(s ? s.total : '')
+      })
+      row.push(r.total, Number(r.percentage.toFixed(2)), grade, ordinal(r.rank))
+      return row
+    })
+
+    // Class average row
+    const avgRow: any[] = ['', '', 'CLASS AVERAGE', '']
+    classSubjectIds.forEach(() => avgRow.push(''))
+    avgRow.push('', classAverage, '', '')
+    dataRows.push(avgRow)
+
+    const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows])
+    ws['!cols'] = [
+      { wch: 4 }, { wch: 16 }, { wch: 26 }, { wch: 6 },
+      ...classSubjectIds.map(() => ({ wch: 10 })),
+      { wch: 8 }, { wch: 10 }, { wch: 8 }, { wch: 10 },
+    ]
+
+    const wb = XLSX.utils.book_new()
+    const safeClass = (classById[selectedClass] || 'Class').replace(/[^A-Za-z0-9]+/g, '_')
+    XLSX.utils.book_append_sheet(wb, ws, safeClass.slice(0, 28))
+    XLSX.writeFile(wb, `TTS_Broadsheet_${safeClass}_${selectedTerm.replace(/\s+/g, '_')}.xlsx`)
+    showToast('Broadsheet downloaded.', 'info')
+    logAction('Broadsheet downloaded', `${classById[selectedClass]} · ${selectedTerm}`)
+  }
+
   async function publishReportCards() {
     askConfirm(
       'Publish Report Cards?',
@@ -3157,6 +3506,54 @@ function BroadsheetTab({
         if (error) { showToast(`Unpublish failed: ${error.message}`, 'error'); return }
         showToast(`Report cards unpublished for ${classById[selectedClass]} · ${selectedTerm}.`, 'warn')
         logAction('Report cards unpublished', `${classById[selectedClass]} · ${selectedTerm}`)
+        refresh()
+      }
+    )
+  }
+
+  async function lockScores() {
+    askConfirm(
+      'Lock Scores?',
+      `Once locked, teachers will NOT be able to add or edit scores for ${classById[selectedClass]} · ${selectedTerm}. Continue?`,
+      async () => {
+        const existing = broadsheetLocks.find(
+          (l) => l.class_id === selectedClass && l.term === selectedTerm && l.session === session
+        )
+        if (existing) {
+          const { error } = await supabase
+            .from('broadsheet_locks')
+            .update({ locked: true, locked_at: new Date().toISOString(), locked_by: 'Master Admin' })
+            .eq('id', existing.id)
+          if (error) { showToast(`Lock failed: ${error.message}`, 'error'); return }
+        } else {
+          const { error } = await supabase
+            .from('broadsheet_locks')
+            .insert([{ class_id: selectedClass, term: selectedTerm, session, locked: true, locked_at: new Date().toISOString(), locked_by: 'Master Admin' }])
+          if (error) { showToast(`Lock failed: ${error.message}`, 'error'); return }
+        }
+        showToast('Scores locked. Teachers can no longer edit.', 'warn')
+        logAction('Scores locked', `${classById[selectedClass]} · ${selectedTerm} · ${session}`)
+        refresh()
+      }
+    )
+  }
+
+  async function unlockScores() {
+    askConfirm(
+      'Unlock Scores?',
+      `Teachers will be able to edit scores again for ${classById[selectedClass]} · ${selectedTerm}.`,
+      async () => {
+        const existing = broadsheetLocks.find(
+          (l) => l.class_id === selectedClass && l.term === selectedTerm && l.session === session
+        )
+        if (!existing) { showToast('No lock found.', 'warn'); return }
+        const { error } = await supabase
+          .from('broadsheet_locks')
+          .update({ locked: false, locked_at: null, locked_by: null })
+          .eq('id', existing.id)
+        if (error) { showToast(`Unlock failed: ${error.message}`, 'error'); return }
+        showToast('Scores unlocked. Teachers can edit again.', 'info')
+        logAction('Scores unlocked', `${classById[selectedClass]} · ${selectedTerm} · ${session}`)
         refresh()
       }
     )
@@ -3227,6 +3624,12 @@ function BroadsheetTab({
             <input type="file" accept=".xlsx,.xls" onChange={handleUpload} className="hidden" />
           </label>
 
+          {selectedClass && rows.length > 0 && (
+            <button onClick={downloadBroadsheet} className="text-xs font-bold bg-blue-600 text-white px-4 py-2.5 rounded-xl hover:bg-blue-700 inline-flex items-center gap-2">
+              <Icon name="download" /> Download Broadsheet
+            </button>
+          )}
+
           {selectedClass && !isPublished && (
             <button onClick={publishReportCards} className="text-xs font-bold bg-emerald-600 text-white px-4 py-2.5 rounded-xl hover:bg-emerald-700 inline-flex items-center gap-2">
               🚀 Publish Report Cards
@@ -3243,6 +3646,22 @@ function BroadsheetTab({
             </>
           )}
 
+          {selectedClass && !isLocked && (
+            <button onClick={lockScores} className="text-xs font-bold bg-slate-800 text-white px-4 py-2.5 rounded-xl hover:bg-black inline-flex items-center gap-2">
+              <Icon name="lock" /> Lock Scores
+            </button>
+          )}
+          {selectedClass && isLocked && (
+            <>
+              <span className="text-xs font-bold bg-rose-50 text-rose-700 ring-1 ring-rose-200 px-4 py-2.5 rounded-xl inline-flex items-center gap-2">
+                🔒 Scores Locked
+              </span>
+              <button onClick={unlockScores} className="text-xs font-bold bg-rose-600 text-white px-4 py-2.5 rounded-xl hover:bg-rose-700 inline-flex items-center gap-2">
+                <Icon name="unlock" /> Unlock Scores
+              </button>
+            </>
+          )}
+
           {selectedClass && filteredScores.length > 0 && (
             <button
               onClick={clearBroadsheet}
@@ -3252,6 +3671,12 @@ function BroadsheetTab({
             </button>
           )}
         </div>
+
+        {isLocked && (
+          <p className="text-[11px] text-rose-700 font-bold mt-3">
+            ⚠ This broadsheet is locked. Teachers cannot add or edit scores until you unlock.
+          </p>
+        )}
       </div>
 
       {selectedClass && (
@@ -3267,7 +3692,8 @@ function BroadsheetTab({
               <table className="w-full text-left text-xs whitespace-nowrap">
                 <thead className="bg-[#4A2E1B] text-white">
                   <tr>
-                    <th className="p-3 sticky left-0 bg-[#4A2E1B]">Name</th>
+                    <th className="p-2 w-12"></th>
+                    <th className="p-3 sticky left-12 bg-[#4A2E1B]">Name</th>
                     <th className="p-3 text-center">Age</th>
                     <th className="p-3 text-center">Pos.</th>
                     {classSubjectIds.map((sid) => (
@@ -3285,7 +3711,14 @@ function BroadsheetTab({
                     const { grade, tone } = gradeFromTotal(r.percentage)
                     return (
                       <tr key={r.id} className="hover:bg-pink-50/50">
-                        <td className="p-3 font-bold text-[#4A2E1B] sticky left-0 bg-white">
+                        <td className="p-2 sticky left-0 bg-white z-10">
+                          {r.passport ? (
+                            <img src={r.passport} alt={r.name} className="w-8 h-10 object-cover rounded ring-1 ring-slate-200" />
+                          ) : (
+                            <div className="w-8 h-10 rounded bg-slate-100 ring-1 ring-slate-200" />
+                          )}
+                        </td>
+                        <td className="p-3 font-bold text-[#4A2E1B] sticky left-12 bg-white z-10">
                           {r.name}
                           <div className="text-[10px] text-gray-500 font-mono">{r.admissionNo}</div>
                         </td>
