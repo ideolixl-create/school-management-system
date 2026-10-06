@@ -39,7 +39,7 @@ const IMAGES = {
 
 const CONTACT = {
   address: '1, CTCS Avenue, Coca Cola Junction, Unity Estate, Orimerunmu Mowe, Ogun State',
-  phones: ['08037376160', '08037173526', '08156320986'],
+  phones: ['08037376160', '08037173526', '08118411656'],
   email: 'trustworthysch16@gmail.com',
   website: 'www.thetrustworthyschools.com',
 }
@@ -51,7 +51,7 @@ const NAV: { label: string; tab?: TabId; children?: { label: string; tab: TabId 
     children: [
       { label: 'School Leadership', tab: 'leadership' },
       { label: 'PTA', tab: 'pta' },
-      { label: "Islamic & Qur'ani", tab: 'islamic' },
+      { label: "Islamic & Qur'anic", tab: 'islamic' },
     ],
   },
   {
@@ -298,7 +298,7 @@ function MobileMenu({
     { label: 'Home', tab: 'home' },
     { label: 'School Leadership', tab: 'leadership' },
     { label: 'PTA', tab: 'pta' },
-    { label: "Islamic & Qur'ani Foundation", tab: 'islamic' },
+    { label: "Islamic & Qur'anic Foundation", tab: 'islamic' },
     { label: 'Admission Requirements', tab: 'admission' },
     { label: 'Preschool', tab: 'preschool' },
     { label: 'Primary School', tab: 'primary' },
@@ -633,7 +633,7 @@ function PTASection({ onNavigate }: { onNavigate: (t: TabId) => void }) {
 function IslamicSection({ onNavigate }: { onNavigate: (t: TabId) => void }) {
   return (
     <Section>
-      <SectionHero badge="Spiritual Foundation" title="Islamic & Qur'ani Foundation" />
+      <SectionHero badge="Spiritual Foundation" title="Islamic & Qur'anic Foundation" />
       <InfoCard>
         <p className="text-sm md:text-base text-gray-700 leading-relaxed font-medium">
           At The Trustworthy Schools, moral integrity is paramount. Our Islamic studies curriculum
@@ -674,6 +674,10 @@ function AdmissionSection({
       attended.
     </>,
     <>Medical fitness report or vaccination history card.</>,
+    <>
+      <strong>Learner Identification Number (LIN)</strong> — if the applicant already has one.
+      This is optional; only a few students currently have it.
+    </>,
   ]
   return (
     <Section>
