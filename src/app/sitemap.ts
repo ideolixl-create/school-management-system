@@ -1,11 +1,11 @@
 import type { MetadataRoute } from 'next'
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = 'https://thetrustworthyschools.com'
+  const baseUrl = 'https://www.thetrustworthyschools.com'
 
   return [
     {
-      url: baseUrl,
+      url: baseUrl + '/',
       lastModified: new Date(),
       changeFrequency: 'monthly',
       priority: 1,

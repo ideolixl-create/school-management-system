@@ -1,7 +1,7 @@
 import './globals.css'
 import type { Metadata, Viewport } from 'next'
 
-const SITE_URL = 'https://thetrustworthyschools.com'
+const SITE_URL = 'https://www.thetrustworthyschools.com'
 const LOGO_URL =
   'https://raw.githubusercontent.com/ideolixlearninghub/Trustworthy_schoolsexam/main/The%20trustworthy%20school%20logo.jpg'
 

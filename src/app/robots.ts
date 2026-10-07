@@ -9,7 +9,7 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ['/login', '/portal/', '/api/'],
       },
     ],
-    sitemap: 'https://thetrustworthyschools.com/sitemap.xml',
-    host: 'https://thetrustworthyschools.com',
+    sitemap: 'https://www.thetrustworthyschools.com/sitemap.xml',
+    host: 'https://www.thetrustworthyschools.com',
   }
 }
