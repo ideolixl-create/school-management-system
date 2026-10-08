@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     template: '%s | The Trustworthy Schools',
   },
   description:
-    'The Trustworthy Schools, Mowe, Ogun State. Quality Islamic & Western education from Preschool to SS3. Computer-Based Testing (CBT) exams, vocational training, and Qur\'anic foundation. Enrolling now.',
+    "The Trustworthy Schools, Mowe, Ogun State. Quality Islamic & Western education from Preschool to SS3. Computer-Based Testing (CBT) exams, vocational training, and Qur'anic foundation. Enrolling now.",
   keywords: [
     'The Trustworthy Schools',
     'Trustworthy Schools Mowe',
@@ -64,13 +64,14 @@ export const metadata: Metadata = {
       'max-video-preview': -1,
     },
   },
-   icon: [
-    { url: '/favicon.ico', sizes: 'any' },
-    { url: '/favicon.png', type: 'image/png', sizes: '32x32' },
-    { url: '/android-chrome-192x192.png', type: 'image/png', sizes: '192x192' },
-  ],
-  apple: '/apple-touch-icon.png',
-},
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/favicon.png', type: 'image/png', sizes: '32x32' },
+      { url: '/android-chrome-192x192.png', type: 'image/png', sizes: '192x192' },
+    ],
+    apple: '/apple-touch-icon.png',
+  },
   verification: {
     // Add your Google Search Console verification code here later
     // google: 'your-verification-code',
