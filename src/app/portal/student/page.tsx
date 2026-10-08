@@ -4,6 +4,7 @@
    THE TRUSTWORTHY SCHOOLS — STUDENT PORTAL
    Tabs: My Report Card · My Exams · News
    CBT Engine with anti-cheat: auto-save, resume, tab-switch counter, timer
+   Header: school banner + passport-ratio student photo
    ============================================================================ */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
@@ -235,14 +236,19 @@ function isWithinWindow(exam: CbtExam): boolean {
 }
 
 /* ============================================================================
-   STUDENT AVATAR — circular (header) or square (passport-style fallback)
+   STUDENT AVATAR — supports circle, square, and passport-ratio
    ============================================================================ */
 
 function StudentAvatar({
-  student, size = 40, ring = 'ring-white/40', shape = 'circle',
+  student,
+  size = 40,
+  height,
+  ring = 'ring-white/40',
+  shape = 'circle',
 }: {
   student: Pick<Student, 'full_name' | 'passport_url'>
   size?: number
+  height?: number
   ring?: string
   shape?: 'circle' | 'square'
 }) {
@@ -254,6 +260,8 @@ function StudentAvatar({
     .join('')
 
   const radius = shape === 'circle' ? 'rounded-full' : 'rounded-lg'
+  const w = size
+  const h = height ?? size
 
   if (student.passport_url) {
     return (
@@ -261,7 +269,7 @@ function StudentAvatar({
         src={student.passport_url}
         alt={student.full_name}
         className={`${radius} object-cover bg-white shrink-0 ring-2 ${ring}`}
-        style={{ width: size, height: size }}
+        style={{ width: w, height: h }}
         onError={(e) => {
           const img = e.currentTarget as HTMLImageElement
           img.style.display = 'none'
@@ -280,7 +288,7 @@ function StudentAvatar({
   return (
     <div
       className={`${radius} bg-pink-500 text-white font-black flex items-center justify-center shrink-0 ring-2 ${ring}`}
-      style={{ width: size, height: size, fontSize: size * 0.4 }}
+      style={{ width: w, height: h, fontSize: Math.min(w, h) * 0.4 }}
     >
       {initials || '👤'}
     </div>
@@ -352,7 +360,6 @@ export default function StudentPortal() {
     }
     setStudent(parsed)
 
-    // Dev-only sanity check: passport_url must be present in localStorage.
     if (process.env.NODE_ENV !== 'production' && !parsed.passport_url) {
       console.warn(
         '[StudentPortal] passport_url missing from localStorage.loggedInStudent. ' +
@@ -403,25 +410,60 @@ export default function StudentPortal() {
       <div className="min-h-screen bg-slate-50 flex flex-col text-gray-800">
         {/* HEADER */}
         <header className="bg-[#4A2E1B] text-white shadow-md border-b-2 border-pink-500 sticky top-0 z-30 no-print">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 flex justify-between items-center gap-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="relative shrink-0">
-                <StudentAvatar student={student} size={44} ring="ring-pink-400/70" />
-                <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-[#4A2E1B]" />
+          {/* Top bar — School logo + name */}
+          <div className="border-b border-white/10">
+            <div className="max-w-5xl mx-auto px-4 sm:px-6 py-2 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <img
+                  src={SCHOOL.logo}
+                  alt={SCHOOL.name}
+                  className="w-9 h-9 rounded-full bg-white p-0.5 object-contain shrink-0 ring-1 ring-pink-300/50"
+                />
+                <div className="min-w-0 leading-tight">
+                  <p className="text-xs sm:text-sm font-black tracking-wide truncate">
+                    {SCHOOL.name.toUpperCase()}
+                  </p>
+                  <p className="text-[10px] text-pink-300 italic truncate">
+                    Motto: {SCHOOL.motto}
+                  </p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <h2 className="font-extrabold text-sm truncate">{student.full_name}</h2>
-                <p className="text-[10px] text-pink-300 truncate">
-                  {student.admission_number} · {klass?.name || '—'}
-                </p>
+              <button
+                onClick={handleLogout}
+                className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-[11px] font-bold hover:bg-red-500 shrink-0"
+              >
+                Log Out
+              </button>
+            </div>
+          </div>
+
+          {/* Bottom bar — Passport + student info */}
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 flex items-center gap-4">
+            <div className="relative shrink-0">
+              <StudentAvatar
+                student={student}
+                size={60}
+                height={76}
+                shape="square"
+                ring="ring-pink-400/60"
+              />
+              <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 ring-2 ring-[#4A2E1B]" />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] uppercase tracking-wider text-pink-300 font-bold">Welcome back</p>
+              <h2 className="font-black text-base sm:text-lg truncate">{student.full_name}</h2>
+              <div className="flex flex-wrap items-center gap-2 mt-1">
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-white/10 ring-1 ring-white/20">
+                  {student.admission_number}
+                </span>
+                {klass?.name && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-200 ring-1 ring-pink-400/40">
+                    {klass.name}
+                  </span>
+                )}
               </div>
             </div>
-            <button
-              onClick={handleLogout}
-              className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-500 shrink-0"
-            >
-              Log Out
-            </button>
           </div>
         </header>
 
