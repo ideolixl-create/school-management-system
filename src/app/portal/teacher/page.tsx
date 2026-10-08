@@ -2,7 +2,8 @@
 
 /* ============================================================================
    THE TRUSTWORTHY SCHOOLS — TEACHER PORTAL
-   v4.0 — Multi-class, locked scores, behavioural gating, passport photos
+   v5.0 — Multi-class score entry fix, locked scores, behavioural gating,
+          passport photos, class-teacher vs subject-teacher separation
    ============================================================================ */
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
@@ -77,14 +78,6 @@ type Announcement = {
   expires_at: string | null
   created_by: string | null
   created_at: string
-}
-
-type BroadsheetLock = {
-  id: string
-  class_id: string
-  term: string
-  session: string
-  locked: boolean
 }
 
 type Toast = { id: number; msg: string; tone: 'success' | 'error' | 'info' | 'warn' }
@@ -280,14 +273,22 @@ export default function TeacherPortal() {
     [subjects, teacherSubjectIds]
   )
 
-  // Classes visible to this teacher
-  // - Class / both teachers → only their assigned classes (from teacher_classes)
-  // - Subject-only teachers → all classes (they teach subjects across many classes)
-  const visibleClasses = useMemo(() => {
+  // ─── SCORE ENTRY CLASSES ─────────────────────────────────────────────────
+  // Any teacher with subjects can enter scores for ANY class.
+  // The schema doesn't pin a subject teacher to specific classes, so we expose
+  // all classes to them so they can pick whichever class they actually teach.
+  const scoreEntryClasses = useMemo(() => {
     if (!teacher) return [] as ClassRow[]
-    if (teacher.role_type === 'subject') {
-      return classes
-    }
+    if (teacherSubjects.length === 0) return [] as ClassRow[]
+    return classes
+  }, [teacher, classes, teacherSubjects])
+
+  // ─── CLASS-TEACHER OVERSIGHT CLASSES ─────────────────────────────────────
+  // Only used for behavioural ratings. Only class teachers (role_type = class
+  // or both) see their own assigned classes here — from teacher_classes.
+  const classTeacherClasses = useMemo(() => {
+    if (!teacher) return [] as ClassRow[]
+    if (teacher.role_type === 'subject') return [] as ClassRow[]
     return classes.filter((c) => myClassIds.includes(c.id))
   }, [teacher, classes, myClassIds])
 
@@ -413,11 +414,11 @@ export default function TeacherPortal() {
             ) : (
               <>
                 {activeTab === 'attendance' && (
-                  <AttendanceTab classes={visibleClasses} showToast={showToast} />
+                  <AttendanceTab classes={scoreEntryClasses} showToast={showToast} />
                 )}
                 {activeTab === 'scores' && (
                   <ScoresTab
-                    classes={visibleClasses}
+                    classes={scoreEntryClasses}
                     teacherSubjects={teacherSubjects}
                     currentTerm={currentTerm}
                     currentSession={currentSession}
@@ -426,7 +427,7 @@ export default function TeacherPortal() {
                 )}
                 {activeTab === 'behavioural' && isClassTeacher && (
                   <BehaviouralTab
-                    classes={visibleClasses}
+                    classes={classTeacherClasses}
                     currentTerm={currentTerm}
                     currentSession={currentSession}
                     teacherId={teacher.id}
@@ -435,7 +436,7 @@ export default function TeacherPortal() {
                 )}
                 {activeTab === 'cbt' && (
                   <CbtResultsTab
-                    classes={visibleClasses}
+                    classes={scoreEntryClasses}
                     teacherSubjectIds={teacherSubjectIds}
                     showToast={showToast}
                   />
@@ -897,7 +898,7 @@ function AttendanceTab({
 }
 
 /* ============================================================================
-   TAB: SCORES (with Edit mode + Clear + Lock awareness)
+   TAB: SCORES (Edit mode + Clear + Lock awareness)
    ============================================================================ */
 
 function ScoresTab({
@@ -942,7 +943,6 @@ function ScoresTab({
     setLoading(true)
     setEditMode(false)
 
-    // Check if admin locked this class+term+session
     const { data: lockRow } = await supabase
       .from('broadsheet_locks')
       .select('*')
@@ -1491,7 +1491,7 @@ function BehaviouralTab({
       <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-5">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-bold text-[#4A2E1B] mb-1">Class</label>
+            <label className="block text-xs font-bold text-[#4A2E1B] mb-1">Class (you are class teacher of)</label>
             <select value={classId} onChange={(e) => setClassId(e.target.value)} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none">
               <option value="">-- Choose Class --</option>
               {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
