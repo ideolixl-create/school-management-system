@@ -17,12 +17,18 @@ const ADMIN_PASSWORD = 'f09b302c@2TS'
 const ADMIN_SESSION_KEY = 'tts.admin.session'
 const ADMIN_SESSION_MINUTES = 30
 
+const SCHOOL = {
+  name: 'The Trustworthy Schools',
+  motto: 'Nurture for Piety',
+  logo: 'https://raw.githubusercontent.com/ideolixlearninghub/Trustworthy_schoolsexam/main/The%20trustworthy%20school%20logo.jpg',
+}
+
 type Role = 'student' | 'teacher' | 'admin'
 
-const ROLE_OPTIONS: { value: Role; label: string }[] = [
-  { value: 'student', label: 'Student' },
-  { value: 'teacher', label: 'Teacher' },
-  { value: 'admin', label: 'Admin' },
+const ROLE_OPTIONS: { value: Role; label: string; icon: string; hint: string }[] = [
+  { value: 'student', label: 'Student', icon: '🎓', hint: 'Admission number + password' },
+  { value: 'teacher', label: 'Teacher', icon: '📚', hint: 'School email + password' },
+  { value: 'admin', label: 'Admin', icon: '🔐', hint: 'Admin password' },
 ]
 
 /* ============================================================================
@@ -45,6 +51,21 @@ function GlobalStyles() {
           select option { color: #1A2332; background-color: #ffffff; }
           input:-webkit-autofill {
             -webkit-text-fill-color: #1A2332 !important;
+          }
+          @keyframes fadeSlideUp {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
+          }
+          .animate-fade-slide {
+            animation: fadeSlideUp 0.35s ease-out both;
+          }
+          @keyframes popIn {
+            0%   { transform: scale(0.6); opacity: 0; }
+            60%  { transform: scale(1.08); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+          }
+          .animate-pop {
+            animation: popIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) both;
           }
         `,
       }}
@@ -97,8 +118,6 @@ export default function LoginPage() {
     try {
       /* ============================================================
          ADMIN
-         Uses a session-based password (not Supabase).
-         The admin dashboard reads tts.admin.session to unlock.
       ============================================================ */
       if (loginRole === 'admin') {
         if (password === ADMIN_PASSWORD) {
@@ -117,7 +136,6 @@ export default function LoginPage() {
 
       /* ============================================================
          TEACHER
-         Looks up by email in the teachers table.
       ============================================================ */
       if (loginRole === 'teacher') {
         const { data, error: dbError } = await supabase
@@ -146,8 +164,6 @@ export default function LoginPage() {
 
       /* ============================================================
          STUDENT
-         Looks up by admission_number in the students table.
-         Password must match the students.password column.
       ============================================================ */
       if (loginRole === 'student') {
         const { data, error: dbError } = await supabase
@@ -179,154 +195,209 @@ export default function LoginPage() {
     }
   }
 
+  const currentRoleMeta = ROLE_OPTIONS.find((r) => r.value === loginRole)!
+
   return (
     <>
       <GlobalStyles />
-      <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white shadow-2xl rounded-2xl overflow-hidden border border-pink-200">
+      <div className="min-h-screen bg-gradient-to-br from-[#FDFBF7] via-[#FAF3EA] to-[#F5E6D8] flex items-center justify-center p-4 relative overflow-hidden">
 
-          {/* HEADER */}
-          <div className="bg-[#4A2E1B] text-white p-6 text-center border-b-4 border-pink-500 relative">
-            <button
-              onClick={() => router.push('/')}
-              aria-label="Back to home"
-              className="absolute left-4 top-4 bg-[#331E12] text-pink-300 px-3 py-1.5 rounded text-xs font-bold hover:bg-[#2D1B0F] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-400"
-            >
-              ← Home
-            </button>
-            <h1 className="text-xl font-extrabold mt-2">Portal Secure Login</h1>
-            <p className="text-xs text-pink-300 mt-1 tracking-widest font-semibold">
-              THE TRUSTWORTHY SCHOOLS
+        {/* Soft decorative blobs */}
+        <div className="absolute -top-24 -left-24 w-72 h-72 bg-pink-200/40 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 -right-24 w-72 h-72 bg-[#4A2E1B]/20 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="w-full max-w-md relative">
+
+          {/* Top: logo + school name */}
+          <div className="text-center mb-6 animate-fade-slide">
+            <div className="relative inline-block">
+              <img
+                src={SCHOOL.logo}
+                alt={SCHOOL.name}
+                className="w-20 h-20 rounded-full bg-white p-1 shadow-lg ring-4 ring-white/70 object-contain mx-auto"
+              />
+              <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-emerald-500 ring-4 ring-[#FDFBF7]" />
+            </div>
+            <h1 className="mt-4 text-2xl font-black text-[#4A2E1B] tracking-tight">
+              {SCHOOL.name}
+            </h1>
+            <p className="text-xs text-[#4A2E1B]/60 italic font-semibold mt-0.5">
+              Motto: "{SCHOOL.motto}"
             </p>
           </div>
 
-          {/* FORM */}
-          <form onSubmit={handleLogin} className="p-6 md:p-8 space-y-5">
+          {/* Card */}
+          <div className="bg-white shadow-2xl rounded-3xl overflow-hidden border border-pink-100">
 
-            {/* ROLE SELECTOR */}
-            <div>
-              <label htmlFor="role" className="block text-sm font-bold text-gray-700 mb-1">
-                Select Portal
-              </label>
-              <div className="relative">
-                <select
-                  id="role"
-                  value={loginRole}
-                  onChange={(e) => changeRole(e.target.value as Role)}
-                  className="w-full appearance-none border p-3 pr-10 rounded-lg text-sm bg-white text-gray-900 font-semibold border-pink-300 focus:outline-none focus:ring-2 focus:ring-pink-400 cursor-pointer"
-                >
-                  {ROLE_OPTIONS.map((r) => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
-                  ))}
-                </select>
-                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#4A2E1B] text-xs">
-                  ▾
-                </span>
+            {/* Card header bar */}
+            <div className="bg-[#4A2E1B] text-white px-6 py-4 flex items-center justify-between border-b-4 border-pink-500">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-pink-300 font-bold">
+                  Portal Access
+                </p>
+                <p className="text-sm font-black mt-0.5">Secure Login</p>
               </div>
+              <button
+                onClick={() => router.push('/')}
+                aria-label="Back to home"
+                className="text-xs font-bold text-pink-200 hover:text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition"
+              >
+                ← Home
+              </button>
             </div>
 
-            {/* STUDENT: Admission Number */}
-            {loginRole === 'student' && (
-              <div>
-                <label htmlFor="identifier" className="block text-sm font-bold text-gray-700 mb-1">
-                  Admission Number
-                </label>
-                <input
-                  id="identifier"
-                  ref={firstFieldRef}
-                  type="text"
-                  placeholder="e.g. TTS/2025/001"
-                  value={identifier}
-                  onChange={(e) => setIdentifier(e.target.value)}
-                  required
-                  autoComplete="username"
-                  className="w-full border p-3 rounded-lg text-sm bg-white text-gray-900 font-semibold border-pink-300 focus:outline-none focus:ring-2 focus:ring-pink-400"
-                />
-              </div>
-            )}
+            <form onSubmit={handleLogin} className="p-6 sm:p-8 space-y-5">
 
-            {/* TEACHER: Email */}
-            {loginRole === 'teacher' && (
+              {/* Role tabs */}
               <div>
-                <label htmlFor="identifier" className="block text-sm font-bold text-gray-700 mb-1">
-                  Teacher Email Address
-                </label>
-                <input
-                  id="identifier"
-                  ref={firstFieldRef}
-                  type="email"
-                  placeholder="owodunnimalik@gmail.com"
-                  value={identifier}
-                  onChange={(e) => setIdentifier(e.target.value)}
-                  required
-                  autoComplete="email"
-                  className="w-full border p-3 rounded-lg text-sm bg-white text-gray-900 font-semibold border-pink-300 focus:outline-none focus:ring-2 focus:ring-pink-400"
-                />
+                <p className="text-xs font-bold text-gray-600 mb-2 uppercase tracking-wide">
+                  Select Portal
+                </p>
+                <div className="grid grid-cols-3 gap-2 bg-slate-100 p-1 rounded-2xl">
+                  {ROLE_OPTIONS.map((r) => {
+                    const active = loginRole === r.value
+                    return (
+                      <button
+                        key={r.value}
+                        type="button"
+                        onClick={() => changeRole(r.value)}
+                        className={`relative flex flex-col items-center justify-center py-2.5 rounded-xl text-[11px] font-bold transition ${
+                          active
+                            ? 'bg-white text-[#4A2E1B] shadow-md ring-1 ring-pink-200'
+                            : 'text-gray-500 hover:text-[#4A2E1B]'
+                        }`}
+                      >
+                        <span className="text-base mb-0.5">{r.icon}</span>
+                        <span>{r.label}</span>
+                        {active && (
+                          <span className="absolute -bottom-px left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-pink-500" />
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+                <p className="text-[10px] text-gray-500 mt-2 text-center italic">
+                  {currentRoleMeta.hint}
+                </p>
               </div>
-            )}
 
-            {/* PASSWORD */}
-            <div>
-              <label htmlFor="password" className="block text-sm font-bold text-gray-700 mb-1">
-                Password
-              </label>
-              <div className="relative">
-                <input
-                  id="password"
-                  ref={loginRole === 'admin' ? firstFieldRef : undefined}
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="Enter password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  autoComplete="current-password"
-                  className="w-full border p-3 pr-12 rounded-lg text-sm bg-white text-gray-900 border-pink-300 focus:outline-none focus:ring-2 focus:ring-pink-400"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#4A2E1B] hover:text-pink-600 focus-visible:outline-none"
+              {/* IDENTIFIER */}
+              <div className="animate-fade-slide" key={loginRole}>
+                <label htmlFor="identifier" className="block text-xs font-bold text-gray-700 mb-1.5">
+                  {loginRole === 'student' && 'Admission Number'}
+                  {loginRole === 'teacher' && 'Teacher Email'}
+                  {loginRole === 'admin' && 'Admin Access'}
+                </label>
+                {loginRole === 'admin' ? (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[11px] text-amber-800 font-medium flex items-start gap-2">
+                    <span className="text-base leading-none">🔒</span>
+                    <span>Admin login uses a password only. Skip this field.</span>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
+                      {loginRole === 'student' ? '🎓' : '📧'}
+                    </span>
+                    <input
+                      id="identifier"
+                      ref={firstFieldRef}
+                      type={loginRole === 'teacher' ? 'email' : 'text'}
+                      placeholder={
+                        loginRole === 'student'
+                          ? 'TTS/2025/001'
+                          : 'teacher@thetrustworthyschools.com'
+                      }
+                      value={identifier}
+                      onChange={(e) => setIdentifier(e.target.value)}
+                      required
+                      autoComplete={loginRole === 'teacher' ? 'email' : 'username'}
+                      className="w-full border pl-10 pr-3 py-3 rounded-xl text-sm bg-white text-gray-900 font-semibold border-slate-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-200 transition"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* PASSWORD */}
+              <div>
+                <label htmlFor="password" className="block text-xs font-bold text-gray-700 mb-1.5">
+                  Password
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
+                    🔑
+                  </span>
+                  <input
+                    id="password"
+                    ref={loginRole === 'admin' ? firstFieldRef : undefined}
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Enter password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    autoComplete="current-password"
+                    className="w-full border pl-10 pr-14 py-3 rounded-xl text-sm bg-white text-gray-900 font-semibold border-slate-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-200 transition"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-[#4A2E1B] hover:text-pink-600 transition"
+                  >
+                    {showPassword ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </div>
+
+              {/* ERROR */}
+              {error && (
+                <div
+                  role="alert"
+                  className="animate-fade-slide bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-xl px-4 py-3 flex items-start gap-2"
                 >
-                  {showPassword ? 'Hide' : 'Show'}
-                </button>
-              </div>
-            </div>
-
-            {/* ERROR */}
-            {error && (
-              <div role="alert" className="bg-red-50 border border-red-200 text-red-700 text-sm font-semibold rounded-lg px-4 py-3">
-                {error}
-              </div>
-            )}
-
-            {/* SUCCESS */}
-            {success && (
-              <div role="status" className="bg-green-50 border border-green-200 text-green-700 text-sm font-semibold rounded-lg px-4 py-3">
-                {success}
-              </div>
-            )}
-
-            {/* SUBMIT */}
-            <button
-              type="submit"
-              disabled={loading || !!success}
-              className="w-full bg-[#4A2E1B] text-white py-3 rounded-lg font-extrabold text-sm shadow-lg hover:bg-[#382213] transition disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-400 flex items-center justify-center gap-2"
-            >
-              {loading && !success ? (
-                <>
-                  <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Logging in...
-                </>
-              ) : (
-                'Secure Login'
+                  <span className="text-base leading-none">⚠️</span>
+                  <span>{error}</span>
+                </div>
               )}
-            </button>
 
-            <p className="text-xs text-center text-gray-500 font-medium pt-1">
-              Having trouble logging in? Contact the school office.
-            </p>
-          </form>
+              {/* SUCCESS */}
+              {success && (
+                <div
+                  role="status"
+                  className="animate-fade-slide bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold rounded-xl px-4 py-3 flex items-start gap-2"
+                >
+                  <span className="text-base leading-none animate-pop">✅</span>
+                  <span>{success}</span>
+                </div>
+              )}
+
+              {/* SUBMIT */}
+              <button
+                type="submit"
+                disabled={loading || !!success}
+                className="w-full bg-[#4A2E1B] hover:bg-[#382213] active:bg-[#2D1B0F] text-white py-3.5 rounded-xl font-black text-sm shadow-lg shadow-[#4A2E1B]/20 transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {loading && !success ? (
+                  <>
+                    <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Logging in...
+                  </>
+                ) : (
+                  <>
+                    {currentRoleMeta.icon} Secure Login
+                  </>
+                )}
+              </button>
+
+              <p className="text-[11px] text-center text-gray-500 font-medium">
+                Having trouble? Contact the school office.
+              </p>
+            </form>
+          </div>
+
+          {/* Bottom footer */}
+          <p className="text-center text-[10px] text-[#4A2E1B]/50 mt-5 font-semibold">
+            {SCHOOL.name} · © {new Date().getFullYear()}
+          </p>
         </div>
       </div>
     </>
