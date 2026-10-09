@@ -1,7 +1,7 @@
 'use client'
 
 /* ============================================================================
-   THE TRUSTWORTHY SCHOOLS — LOGIN PAGE
+   THE TRUSTWORTHY SCHOOLS — LOGIN PAGE (v2 — Split Panel Design)
    Student · Teacher · Admin
    ============================================================================ */
 
@@ -20,19 +20,20 @@ const ADMIN_SESSION_MINUTES = 30
 const SCHOOL = {
   name: 'The Trustworthy Schools',
   motto: 'Nurture for Piety',
+  tagline: 'Excellence in Western Education & Islamic Values',
   logo: 'https://raw.githubusercontent.com/ideolixlearninghub/Trustworthy_schoolsexam/main/The%20trustworthy%20school%20logo.jpg',
 }
 
 type Role = 'student' | 'teacher' | 'admin'
 
 const ROLE_OPTIONS: { value: Role; label: string; icon: string; hint: string }[] = [
-  { value: 'student', label: 'Student', icon: '🎓', hint: 'Admission number + password' },
-  { value: 'teacher', label: 'Teacher', icon: '📚', hint: 'School email + password' },
-  { value: 'admin', label: 'Admin', icon: '🔐', hint: 'Admin password' },
+  { value: 'student', label: 'Student', icon: '🎓', hint: 'Sign in with your admission number' },
+  { value: 'teacher', label: 'Teacher', icon: '📚', hint: 'Sign in with your school email' },
+  { value: 'admin', label: 'Admin', icon: '🔐', hint: 'Administrator access only' },
 ]
 
 /* ============================================================================
-   GLOBAL STYLE — white-on-white fix
+   GLOBAL STYLE
    ============================================================================ */
 
 function GlobalStyles() {
@@ -52,21 +53,11 @@ function GlobalStyles() {
           input:-webkit-autofill {
             -webkit-text-fill-color: #1A2332 !important;
           }
-          @keyframes fadeSlideUp {
-            from { opacity: 0; transform: translateY(8px); }
+          @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
             to   { opacity: 1; transform: translateY(0); }
           }
-          .animate-fade-slide {
-            animation: fadeSlideUp 0.35s ease-out both;
-          }
-          @keyframes popIn {
-            0%   { transform: scale(0.6); opacity: 0; }
-            60%  { transform: scale(1.08); opacity: 1; }
-            100% { transform: scale(1); opacity: 1; }
-          }
-          .animate-pop {
-            animation: popIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) both;
-          }
+          .animate-fade { animation: fadeIn 0.35s ease-out both; }
         `,
       }}
     />
@@ -116,9 +107,6 @@ export default function LoginPage() {
     const passVal = password.trim().toLowerCase()
 
     try {
-      /* ============================================================
-         ADMIN
-      ============================================================ */
       if (loginRole === 'admin') {
         if (password === ADMIN_PASSWORD) {
           sessionStorage.setItem(
@@ -134,9 +122,6 @@ export default function LoginPage() {
         return
       }
 
-      /* ============================================================
-         TEACHER
-      ============================================================ */
       if (loginRole === 'teacher') {
         const { data, error: dbError } = await supabase
           .from('teachers')
@@ -162,9 +147,6 @@ export default function LoginPage() {
         return
       }
 
-      /* ============================================================
-         STUDENT
-      ============================================================ */
       if (loginRole === 'student') {
         const { data, error: dbError } = await supabase
           .from('students')
@@ -200,60 +182,121 @@ export default function LoginPage() {
   return (
     <>
       <GlobalStyles />
-      <div className="min-h-screen bg-gradient-to-br from-[#FDFBF7] via-[#FAF3EA] to-[#F5E6D8] flex items-center justify-center p-4 relative overflow-hidden">
+      <div className="min-h-screen bg-gradient-to-br from-[#2D1B0F] via-[#4A2E1B] to-[#2D1B0F] flex items-center justify-center p-3 sm:p-6">
 
-        {/* Soft decorative blobs */}
-        <div className="absolute -top-24 -left-24 w-72 h-72 bg-pink-200/40 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-24 -right-24 w-72 h-72 bg-[#4A2E1B]/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="w-full max-w-5xl bg-white rounded-3xl shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-5">
 
-        <div className="w-full max-w-md relative">
+          {/* ═══════════════════════════════════════════════════════════
+              LEFT PANEL — Branding (hidden on mobile, shown on lg+)
+              ═══════════════════════════════════════════════════════════ */}
+          <div className="hidden lg:flex lg:col-span-2 relative bg-gradient-to-br from-[#4A2E1B] via-[#3A2214] to-[#2D1B0F] text-white p-10 flex-col justify-between overflow-hidden">
 
-          {/* Top: logo + school name */}
-          <div className="text-center mb-6 animate-fade-slide">
-            <div className="relative inline-block">
+            {/* Decorative pattern */}
+            <div className="absolute inset-0 opacity-10 pointer-events-none" aria-hidden="true">
+              <div className="absolute top-10 -right-20 w-64 h-64 rounded-full bg-pink-400 blur-3xl" />
+              <div className="absolute bottom-10 -left-20 w-64 h-64 rounded-full bg-pink-300 blur-3xl" />
+            </div>
+
+            {/* Top: logo + name */}
+            <div className="relative z-10">
+              <div className="flex items-center gap-4 mb-8">
+                <div className="relative shrink-0">
+                  <img
+                    src={SCHOOL.logo}
+                    alt={SCHOOL.name}
+                    className="w-16 h-16 rounded-2xl bg-white p-1.5 object-contain shadow-lg ring-2 ring-pink-400/40"
+                  />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-black tracking-[0.25em] text-pink-300 uppercase">
+                    Welcome to
+                  </p>
+                  <p className="font-black text-sm tracking-wide">
+                    TTS PORTAL
+                  </p>
+                </div>
+              </div>
+
+              <h1 className="text-3xl font-black leading-tight mb-3">
+                {SCHOOL.name}
+              </h1>
+              <p className="text-base italic text-pink-300 font-semibold mb-6">
+                "{SCHOOL.motto}"
+              </p>
+
+              <div className="h-px bg-pink-400/30 mb-6" />
+
+              <p className="text-sm text-pink-100/80 leading-relaxed font-medium">
+                {SCHOOL.tagline}
+              </p>
+            </div>
+
+            {/* Bottom: greeting + copyright */}
+            <div className="relative z-10">
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-4 backdrop-blur-sm">
+                <p className="text-[11px] uppercase tracking-widest text-pink-300 font-bold mb-1">
+                  Return to Portal
+                </p>
+                <p className="text-xs text-white/90 leading-relaxed">
+                  Access your report cards, CBT exams, attendance, and school announcements in one place.
+                </p>
+              </div>
+              <p className="text-[10px] text-white/40 mt-6 font-semibold">
+                © {new Date().getFullYear()} {SCHOOL.name}
+              </p>
+            </div>
+          </div>
+
+          {/* ═══════════════════════════════════════════════════════════
+              RIGHT PANEL — Login form
+              ═══════════════════════════════════════════════════════════ */}
+          <div className="col-span-1 lg:col-span-3 p-6 sm:p-10 bg-white">
+
+            {/* Mobile header — logo + name stacked */}
+            <div className="lg:hidden flex items-center gap-3 mb-6 pb-6 border-b border-slate-100">
               <img
                 src={SCHOOL.logo}
                 alt={SCHOOL.name}
-                className="w-20 h-20 rounded-full bg-white p-1 shadow-lg ring-4 ring-white/70 object-contain mx-auto"
+                className="w-12 h-12 rounded-xl bg-white p-1 object-contain ring-1 ring-pink-200 shrink-0"
               />
-              <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-emerald-500 ring-4 ring-[#FDFBF7]" />
-            </div>
-            <h1 className="mt-4 text-2xl font-black text-[#4A2E1B] tracking-tight">
-              {SCHOOL.name}
-            </h1>
-            <p className="text-xs text-[#4A2E1B]/60 italic font-semibold mt-0.5">
-              Motto: "{SCHOOL.motto}"
-            </p>
-          </div>
-
-          {/* Card */}
-          <div className="bg-white shadow-2xl rounded-3xl overflow-hidden border border-pink-100">
-
-            {/* Card header bar */}
-            <div className="bg-[#4A2E1B] text-white px-6 py-4 flex items-center justify-between border-b-4 border-pink-500">
-              <div>
-                <p className="text-[10px] uppercase tracking-[0.2em] text-pink-300 font-bold">
-                  Portal Access
+              <div className="min-w-0">
+                <p className="font-black text-sm text-[#4A2E1B] leading-tight truncate">
+                  {SCHOOL.name}
                 </p>
-                <p className="text-sm font-black mt-0.5">Secure Login</p>
+                <p className="text-[11px] text-[#4A2E1B]/60 italic font-semibold truncate">
+                  "{SCHOOL.motto}"
+                </p>
               </div>
+            </div>
+
+            {/* Back to home */}
+            <div className="mb-6 flex justify-end">
               <button
                 onClick={() => router.push('/')}
-                aria-label="Back to home"
-                className="text-xs font-bold text-pink-200 hover:text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition"
+                className="text-[11px] font-bold text-[#4A2E1B] hover:text-pink-600 transition"
               >
-                ← Home
+                ← Back to Home
               </button>
             </div>
 
-            <form onSubmit={handleLogin} className="p-6 sm:p-8 space-y-5">
+            {/* Heading */}
+            <div className="mb-6">
+              <h2 className="text-2xl font-black text-[#4A2E1B] tracking-tight">
+                Portal Access
+              </h2>
+              <p className="text-xs text-gray-500 mt-1">
+                {currentRoleMeta.hint}
+              </p>
+            </div>
 
-              {/* Role tabs */}
+            <form onSubmit={handleLogin} className="space-y-5">
+
+              {/* ROLE TABS */}
               <div>
-                <p className="text-xs font-bold text-gray-600 mb-2 uppercase tracking-wide">
+                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">
                   Select Portal
                 </p>
-                <div className="grid grid-cols-3 gap-2 bg-slate-100 p-1 rounded-2xl">
+                <div className="grid grid-cols-3 gap-2">
                   {ROLE_OPTIONS.map((r) => {
                     const active = loginRole === r.value
                     return (
@@ -261,87 +304,81 @@ export default function LoginPage() {
                         key={r.value}
                         type="button"
                         onClick={() => changeRole(r.value)}
-                        className={`relative flex flex-col items-center justify-center py-2.5 rounded-xl text-[11px] font-bold transition ${
+                        className={`flex flex-col items-center justify-center py-3 rounded-xl text-[11px] font-bold transition-all ${
                           active
-                            ? 'bg-white text-[#4A2E1B] shadow-md ring-1 ring-pink-200'
-                            : 'text-gray-500 hover:text-[#4A2E1B]'
+                            ? 'bg-[#4A2E1B] text-white shadow-lg ring-2 ring-pink-400/50 scale-[1.02]'
+                            : 'bg-slate-100 text-gray-600 hover:bg-slate-200'
                         }`}
                       >
-                        <span className="text-base mb-0.5">{r.icon}</span>
+                        <span className="text-lg mb-1">{r.icon}</span>
                         <span>{r.label}</span>
-                        {active && (
-                          <span className="absolute -bottom-px left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-pink-500" />
-                        )}
                       </button>
                     )
                   })}
                 </div>
-                <p className="text-[10px] text-gray-500 mt-2 text-center italic">
-                  {currentRoleMeta.hint}
-                </p>
               </div>
 
               {/* IDENTIFIER */}
-              <div className="animate-fade-slide" key={loginRole}>
-                <label htmlFor="identifier" className="block text-xs font-bold text-gray-700 mb-1.5">
-                  {loginRole === 'student' && 'Admission Number'}
-                  {loginRole === 'teacher' && 'Teacher Email'}
-                  {loginRole === 'admin' && 'Admin Access'}
-                </label>
-                {loginRole === 'admin' ? (
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[11px] text-amber-800 font-medium flex items-start gap-2">
-                    <span className="text-base leading-none">🔒</span>
-                    <span>Admin login uses a password only. Skip this field.</span>
+              {loginRole !== 'admin' && (
+                <div className="animate-fade" key={loginRole}>
+                  <label htmlFor="identifier" className="block text-xs font-bold text-[#4A2E1B] mb-1.5">
+                    {loginRole === 'student' ? 'Admission Number' : 'Teacher Email'}
+                  </label>
+                  <input
+                    id="identifier"
+                    ref={firstFieldRef}
+                    type={loginRole === 'teacher' ? 'email' : 'text'}
+                    placeholder={
+                      loginRole === 'student'
+                        ? 'TTS/2025/001'
+                        : 'teacher@thetrustworthyschools.com'
+                    }
+                    value={identifier}
+                    onChange={(e) => setIdentifier(e.target.value)}
+                    required
+                    autoComplete={loginRole === 'teacher' ? 'email' : 'username'}
+                    className="w-full border px-4 py-3.5 rounded-xl text-sm bg-white text-gray-900 font-semibold border-slate-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-200 transition"
+                  />
+                </div>
+              )}
+
+              {/* ADMIN NOTICE */}
+              {loginRole === 'admin' && (
+                <div className="animate-fade bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+                  <span className="text-2xl leading-none">🔒</span>
+                  <div>
+                    <p className="text-xs font-black text-amber-900 uppercase tracking-wide">
+                      Admin Access
+                    </p>
+                    <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                      Administrator login requires only the admin password. Enter it below to continue.
+                    </p>
                   </div>
-                ) : (
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
-                      {loginRole === 'student' ? '🎓' : '📧'}
-                    </span>
-                    <input
-                      id="identifier"
-                      ref={firstFieldRef}
-                      type={loginRole === 'teacher' ? 'email' : 'text'}
-                      placeholder={
-                        loginRole === 'student'
-                          ? 'TTS/2025/001'
-                          : 'teacher@thetrustworthyschools.com'
-                      }
-                      value={identifier}
-                      onChange={(e) => setIdentifier(e.target.value)}
-                      required
-                      autoComplete={loginRole === 'teacher' ? 'email' : 'username'}
-                      className="w-full border pl-10 pr-3 py-3 rounded-xl text-sm bg-white text-gray-900 font-semibold border-slate-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-200 transition"
-                    />
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
 
               {/* PASSWORD */}
               <div>
-                <label htmlFor="password" className="block text-xs font-bold text-gray-700 mb-1.5">
+                <label htmlFor="password" className="block text-xs font-bold text-[#4A2E1B] mb-1.5">
                   Password
                 </label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
-                    🔑
-                  </span>
                   <input
                     id="password"
                     ref={loginRole === 'admin' ? firstFieldRef : undefined}
                     type={showPassword ? 'text' : 'password'}
-                    placeholder="Enter password"
+                    placeholder="Enter your password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     autoComplete="current-password"
-                    className="w-full border pl-10 pr-14 py-3 rounded-xl text-sm bg-white text-gray-900 font-semibold border-slate-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-200 transition"
+                    className="w-full border px-4 py-3.5 pr-16 rounded-xl text-sm bg-white text-gray-900 font-semibold border-slate-200 focus:outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-200 transition"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-[#4A2E1B] hover:text-pink-600 transition"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-[#4A2E1B] hover:text-pink-600 transition px-2 py-1"
                   >
                     {showPassword ? 'Hide' : 'Show'}
                   </button>
@@ -352,10 +389,9 @@ export default function LoginPage() {
               {error && (
                 <div
                   role="alert"
-                  className="animate-fade-slide bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-xl px-4 py-3 flex items-start gap-2"
+                  className="animate-fade bg-red-50 border-l-4 border-red-500 text-red-700 text-xs font-semibold rounded-r-lg px-4 py-3"
                 >
-                  <span className="text-base leading-none">⚠️</span>
-                  <span>{error}</span>
+                  {error}
                 </div>
               )}
 
@@ -363,10 +399,9 @@ export default function LoginPage() {
               {success && (
                 <div
                   role="status"
-                  className="animate-fade-slide bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold rounded-xl px-4 py-3 flex items-start gap-2"
+                  className="animate-fade bg-emerald-50 border-l-4 border-emerald-500 text-emerald-700 text-xs font-semibold rounded-r-lg px-4 py-3"
                 >
-                  <span className="text-base leading-none animate-pop">✅</span>
-                  <span>{success}</span>
+                  {success}
                 </div>
               )}
 
@@ -374,7 +409,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading || !!success}
-                className="w-full bg-[#4A2E1B] hover:bg-[#382213] active:bg-[#2D1B0F] text-white py-3.5 rounded-xl font-black text-sm shadow-lg shadow-[#4A2E1B]/20 transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full bg-[#4A2E1B] hover:bg-[#382213] active:scale-[0.99] text-white py-4 rounded-xl font-black text-sm shadow-lg shadow-[#4A2E1B]/30 transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {loading && !success ? (
                   <>
@@ -383,21 +418,17 @@ export default function LoginPage() {
                   </>
                 ) : (
                   <>
-                    {currentRoleMeta.icon} Secure Login
+                    Sign In
+                    <span className="text-base">→</span>
                   </>
                 )}
               </button>
 
-              <p className="text-[11px] text-center text-gray-500 font-medium">
-                Having trouble? Contact the school office.
+              <p className="text-[11px] text-center text-gray-500 font-medium pt-1">
+                Having trouble logging in? Contact the school office.
               </p>
             </form>
           </div>
-
-          {/* Bottom footer */}
-          <p className="text-center text-[10px] text-[#4A2E1B]/50 mt-5 font-semibold">
-            {SCHOOL.name} · © {new Date().getFullYear()}
-          </p>
         </div>
       </div>
     </>
