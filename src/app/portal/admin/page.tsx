@@ -2,7 +2,7 @@
 
 /* ============================================================================
    THE TRUSTWORTHY SCHOOLS — ADMIN CONTROL CENTER
-   v6.1 — Multi-Class Exams, Bulk Unpublish, Score Protection
+   v7.0 — 2026/2027 Session, Bulk Deletions, Orphan Score Protection
    ============================================================================ */
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
@@ -26,8 +26,8 @@ const SCHOOL = {
   email: 'trustworthysch16@gmail.com',
   website: 'www.thetrustworthyschools.com',
   logo: 'https://raw.githubusercontent.com/ideolixlearninghub/Trustworthy_schoolsexam/main/The%20trustworthy%20school%20logo.jpg',
-  session: '2025/2026',
-  version: '6.1',
+  session: '2026/2027', // Updated Session
+  version: '7.0',
 }
 
 const TERMS = ['First Term', 'Second Term', 'Third Term'] as const
@@ -355,7 +355,7 @@ async function deletePassportByUrl(url: string | null): Promise<void> {
 }
 
 /* ============================================================================
-   GLOBAL STYLES — READABILITY HARDENED
+   GLOBAL STYLES
    ============================================================================ */
 
 function GlobalStyles() {
@@ -363,7 +363,6 @@ function GlobalStyles() {
     <style
       dangerouslySetInnerHTML={{
         __html: `
-          /* Force readable text on all form controls */
           input, select, textarea, option {
             color: #1A2332 !important;
             background-color: #ffffff;
@@ -376,8 +375,6 @@ function GlobalStyles() {
           input:-webkit-autofill {
             -webkit-text-fill-color: #1A2332 !important;
           }
-
-          /* Ensure text never washes out over coloured/row hover backgrounds */
           table th, table td {
             color: #1A2332;
             text-shadow: none;
@@ -724,7 +721,7 @@ function Console({ onLogout }: { onLogout: () => void }) {
           <div className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
               <h3 className="font-bold text-[#4A2E1B] text-base">{confirmState.title}</h3>
-              <p className="text-sm text-gray-600 mt-1">{confirmState.message}</p>
+              <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap">{confirmState.message}</p>
               <div className="mt-5 flex justify-end gap-2">
                 <button onClick={() => setConfirmState(null)} className="px-4 py-2 rounded-xl text-xs font-bold text-gray-700 hover:bg-slate-100">Cancel</button>
                 <button onClick={() => { confirmState.onConfirm(); setConfirmState(null) }} className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700">Confirm</button>
@@ -830,7 +827,7 @@ function QuickAction({ label, onClick }: { label: string; onClick: () => void })
 }
 
 /* ============================================================================
-   TAB: STUDENTS
+   TAB: STUDENTS (Bulk Delete Added)
    ============================================================================ */
 
 function StudentsTab({
@@ -852,11 +849,30 @@ function StudentsTab({
   const [filterClass, setFilterClass] = useState('')
   const [saving, setSaving] = useState(false)
   const [editTarget, setEditTarget] = useState<Student | null>(null)
+  
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [bulkPreview, setBulkPreview] = useState<{
     valid: any[]; duplicates: string[]; errors: string[]; unmatchedClasses: string[]
   } | null>(null)
 
   const classById = useMemo(() => Object.fromEntries(classes.map((c) => [c.id, c.name])), [classes])
+
+  // Reset selection when search filters change
+  useEffect(() => { setSelectedIds([]) }, [q, filterClass])
+
+  function toggleSelect(id: string) {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  function toggleAll() {
+    const filtered = students.filter(
+      (s) =>
+        (!q || s.full_name.toLowerCase().includes(q.toLowerCase()) || s.admission_number.toLowerCase().includes(q.toLowerCase())) &&
+        (!filterClass || s.class_id === filterClass)
+    )
+    if (selectedIds.length === filtered.length) setSelectedIds([])
+    else setSelectedIds(filtered.map(s => s.id))
+  }
 
   function handleFormPhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]
@@ -951,6 +967,28 @@ function StudentsTab({
       logAction('Student removed', `${s.full_name}`)
       refresh()
     })
+  }
+
+  function bulkRemoveStudents() {
+    if (selectedIds.length === 0) return
+    askConfirm(
+      `Delete ${selectedIds.length} Students?`,
+      `Are you absolutely sure you want to permanently delete ${selectedIds.length} selected student(s)? All their associated data (passwords, photos) will be removed.`,
+      async () => {
+        // Delete photos first
+        const toDelete = students.filter(s => selectedIds.includes(s.id) && s.passport_url)
+        for (const s of toDelete) {
+          if (s.passport_url) await deletePassportByUrl(s.passport_url)
+        }
+        
+        const { error } = await supabase.from('students').delete().in('id', selectedIds)
+        if (error) { showToast(`Bulk delete failed: ${error.message}`, 'error'); return }
+        showToast(`${selectedIds.length} student(s) removed.`, 'warn')
+        logAction('Bulk students deleted', `${selectedIds.length} removed`)
+        setSelectedIds([])
+        refresh()
+      }
+    )
   }
 
   function downloadSample() {
@@ -1192,9 +1230,16 @@ function StudentsTab({
         </div>
 
         <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 overflow-hidden">
-          <div className="px-6 py-5 border-b border-slate-100">
-            <h2 className="font-semibold text-[#4A2E1B]">Student Directory</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Total: {filtered.length} of {students.length}</p>
+          <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+            <div>
+              <h2 className="font-semibold text-[#4A2E1B]">Student Directory</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Total: {filtered.length} of {students.length}</p>
+            </div>
+            {selectedIds.length > 0 && (
+              <button onClick={bulkRemoveStudents} className="text-xs font-bold bg-red-600 text-white px-4 py-2 rounded-xl hover:bg-red-700">
+                Delete Selected ({selectedIds.length})
+              </button>
+            )}
           </div>
           <div className="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row gap-2">
             <div className="relative flex-grow">
@@ -1210,18 +1255,23 @@ function StudentsTab({
             <table className="w-full text-left text-xs">
               <thead className="bg-[#4A2E1B] text-white text-[11px] uppercase tracking-wider sticky top-0">
                 <tr>
+                  <th className="px-3 py-3 w-10 text-white cursor-pointer" onClick={toggleAll}>
+                    <input type="checkbox" className="w-4 h-4 rounded border-white/50 text-pink-600 cursor-pointer" checked={filtered.length > 0 && selectedIds.length === filtered.length} readOnly />
+                  </th>
                   <th className="px-3 py-3 w-14 text-white">Photo</th>
                   <th className="px-4 py-3 text-white">Adm No</th>
                   <th className="px-4 py-3 text-white">Full Name</th>
                   <th className="px-4 py-3 text-white">Class</th>
                   <th className="px-4 py-3 text-center text-white">Age</th>
-                  <th className="px-4 py-3 text-white">Gender</th>
                   <th className="px-4 py-3 text-right text-white">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
                 {filtered.map((s) => (
-                  <tr key={s.id} className="hover:bg-pink-50/40">
+                  <tr key={s.id} className={`hover:bg-pink-50/40 ${selectedIds.includes(s.id) ? 'bg-pink-50/60' : ''}`}>
+                    <td className="px-3 py-2 bg-white cursor-pointer" onClick={() => toggleSelect(s.id)}>
+                      <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-pink-600" checked={selectedIds.includes(s.id)} readOnly />
+                    </td>
                     <td className="px-3 py-2 bg-white">
                       {s.passport_url ? (
                         <img src={s.passport_url} alt={s.full_name} className="w-10 h-12 object-cover rounded-lg ring-1 ring-slate-200" />
@@ -1235,7 +1285,6 @@ function StudentsTab({
                     <td className="px-4 py-3 font-bold text-[#4A2E1B] bg-white">{s.full_name}</td>
                     <td className="px-4 py-3 text-[#1A2332] bg-white">{classById[s.class_id || ''] || '—'}</td>
                     <td className="px-4 py-3 text-center text-[#1A2332] bg-white">{ageFromDob(s.date_of_birth) ?? '—'}</td>
-                    <td className="px-4 py-3 text-[#1A2332] bg-white">{s.gender || '—'}</td>
                     <td className="px-4 py-3 text-right whitespace-nowrap bg-white">
                       <button onClick={() => setEditTarget(s)} className="text-blue-700 hover:text-blue-800 font-bold text-[11px] mr-3">Edit</button>
                       <button onClick={() => resetPassword(s)} className="text-amber-700 hover:text-amber-800 font-bold text-[11px] mr-3">Reset PW</button>
@@ -1367,7 +1416,7 @@ function EditStudentModal({
 }
 
 /* ============================================================================
-   TAB: TEACHERS
+   TAB: TEACHERS (Bulk Delete Added)
    ============================================================================ */
 
 function TeachersTab({
@@ -1386,8 +1435,18 @@ function TeachersTab({
   })
   const [saving, setSaving] = useState(false)
   const [editTarget, setEditTarget] = useState<Teacher | null>(null)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
 
   const classById = useMemo(() => Object.fromEntries(classes.map((c) => [c.id, c.name])), [classes])
+
+  function toggleSelect(id: string) {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  function toggleAll() {
+    if (selectedIds.length === teachers.length) setSelectedIds([])
+    else setSelectedIds(teachers.map(t => t.id))
+  }
 
   function toggleClass(id: string) {
     setForm((prev) => {
@@ -1504,6 +1563,22 @@ function TeachersTab({
     })
   }
 
+  function bulkRemoveTeachers() {
+    if (selectedIds.length === 0) return
+    askConfirm(
+      `Delete ${selectedIds.length} Teachers?`,
+      `Are you sure you want to permanently remove ${selectedIds.length} teacher(s) from the system?`,
+      async () => {
+        const { error } = await supabase.from('teachers').delete().in('id', selectedIds)
+        if (error) { showToast(`Bulk delete failed: ${error.message}`, 'error'); return }
+        showToast(`${selectedIds.length} teacher(s) removed.`, 'warn')
+        logAction('Bulk teachers deleted', `${selectedIds.length} removed`)
+        setSelectedIds([])
+        refresh()
+      }
+    )
+  }
+
   const ROLE_LABEL: Record<Teacher['role_type'], string> = {
     subject: 'Subject Teacher',
     class: 'Class Teacher',
@@ -1579,14 +1654,24 @@ function TeachersTab({
       </div>
 
       <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 overflow-hidden">
-        <div className="px-6 py-5 border-b border-slate-100">
-          <h2 className="font-semibold text-[#4A2E1B]">Teacher Directory</h2>
-          <p className="text-xs text-gray-500 mt-0.5">Total: {teachers.length}</p>
+        <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <h2 className="font-semibold text-[#4A2E1B]">Teacher Directory</h2>
+            <p className="text-xs text-gray-500 mt-0.5">Total: {teachers.length}</p>
+          </div>
+          {selectedIds.length > 0 && (
+            <button onClick={bulkRemoveTeachers} className="text-xs font-bold bg-red-600 text-white px-4 py-2 rounded-xl hover:bg-red-700">
+              Delete Selected ({selectedIds.length})
+            </button>
+          )}
         </div>
         <div className="overflow-x-auto max-h-[620px]">
           <table className="w-full text-left text-xs">
             <thead className="bg-[#4A2E1B] text-white text-[11px] uppercase tracking-wider">
               <tr>
+                <th className="px-3 py-3 w-10 text-white cursor-pointer" onClick={toggleAll}>
+                   <input type="checkbox" className="w-4 h-4 rounded border-white/50 text-pink-600 cursor-pointer" checked={teachers.length > 0 && selectedIds.length === teachers.length} readOnly />
+                </th>
                 <th className="px-4 py-3 text-white">Staff ID</th>
                 <th className="px-4 py-3 text-white">Name</th>
                 <th className="px-4 py-3 text-white">Role</th>
@@ -1599,7 +1684,10 @@ function TeachersTab({
               {teachers.map((t) => {
                 const classNames = (t.class_ids || []).map((id) => classById[id]).filter(Boolean)
                 return (
-                  <tr key={t.id} className="hover:bg-pink-50/40">
+                  <tr key={t.id} className={`hover:bg-pink-50/40 ${selectedIds.includes(t.id) ? 'bg-pink-50/60' : ''}`}>
+                    <td className="px-3 py-2 bg-white cursor-pointer" onClick={() => toggleSelect(t.id)}>
+                      <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-pink-600" checked={selectedIds.includes(t.id)} readOnly />
+                    </td>
                     <td className="px-4 py-3 font-mono text-pink-700 font-semibold bg-white">{t.staff_id}</td>
                     <td className="px-4 py-3 font-bold text-[#4A2E1B] bg-white">{t.full_name}</td>
                     <td className="px-4 py-3 bg-white"><span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-pink-50 text-pink-700 ring-1 ring-pink-200 uppercase">{ROLE_LABEL[t.role_type]}</span></td>
@@ -1623,7 +1711,7 @@ function TeachersTab({
                   </tr>
                 )
               })}
-              {teachers.length === 0 && <tr><td colSpan={6} className="px-4 py-12 text-center text-xs text-gray-500 italic bg-white">No teachers registered yet.</td></tr>}
+              {teachers.length === 0 && <tr><td colSpan={7} className="px-4 py-12 text-center text-xs text-gray-500 italic bg-white">No teachers registered yet.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -1811,7 +1899,7 @@ function QuestionsTab({
 }
 
 /* ============================================================================
-   TAB: EXAMS
+   TAB: EXAMS (Bulk Delete Added)
    ============================================================================ */
 
 function ExamsTab({
@@ -1873,7 +1961,7 @@ function ExamList({
   const [showCreate, setShowCreate] = useState(false)
   const [form, setForm] = useState({
     title: '', 
-    class_ids: [] as string[], // Changed to array for multi-class creation
+    class_ids: [] as string[],
     subject_id: '',
     duration_minutes: 30, 
     session: SCHOOL.session, 
@@ -1884,6 +1972,7 @@ function ExamList({
   const [q, setQ] = useState('')
   const [filterClass, setFilterClass] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
 
   const classById = useMemo(() => Object.fromEntries(classes.map((c) => [c.id, c.name])), [classes])
   const subjectById = useMemo(() => Object.fromEntries(subjects.map((s) => [s.id, s.name])), [subjects])
@@ -1897,6 +1986,18 @@ function ExamList({
     questions.forEach((q) => m.set(q.exam_id, (m.get(q.exam_id) || 0) + q.marks))
     return m
   }, [questions])
+
+  // Reset selection when filters change
+  useEffect(() => { setSelectedIds([]) }, [q, filterClass, filterStatus])
+
+  function toggleSelect(id: string) {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  function toggleAll() {
+    if (selectedIds.length === filtered.length) setSelectedIds([])
+    else setSelectedIds(filtered.map(e => e.id))
+  }
 
   function toggleClass(id: string) {
     setForm((prev) => {
@@ -1918,7 +2019,6 @@ function ExamList({
     }
     setSaving(true)
 
-    // Pre-check for published exams to prevent duplicates
     if (form.status === 'published') {
       for (const cid of form.class_ids) {
         const { data: existing } = await supabase
@@ -1955,11 +2055,9 @@ function ExamList({
     setForm({ title: '', class_ids: [], subject_id: '', duration_minutes: 30, session: SCHOOL.session, term: 'First Term', status: 'draft' })
     setShowCreate(false)
     refresh()
-    // Open the first created exam
     if (data && data.length > 0) onOpen(data[0].id)
   }
 
-  // Step 2: Bulk Unpublish
   async function unpublishAllLive() {
     askConfirm(
       'Unpublish ALL Live Exams?',
@@ -1982,24 +2080,31 @@ function ExamList({
     )
   }
 
-  // Step 3: Score Protection
   function removeExam(ex: CbtExam) {
     askConfirm(
       'Delete Exam?', 
-      `Are you sure you want to delete "${ex.title}"? \n\nWARNING: If you proceed, student scores might be lost. If you want to keep scores, click "Cancel" and simply change the exam status to Draft instead.`, 
+      `Are you sure you want to delete "${ex.title}"? Student scores will be protected and remain in the database until manually deleted from the Broadsheet tab.`, 
       async () => {
-        // Check if attempts exist first
-        const { count } = await supabase.from('cbt_attempts').select('*', { count: 'exact', head: true }).eq('exam_id', ex.id)
-        
-        if (count && count > 0) {
-           showToast(`Cannot delete: ${count} students have already taken this exam. Unpublish it instead to preserve scores.`, 'error')
-           return
-        }
-
         const { error } = await supabase.from('cbt_exams').delete().eq('id', ex.id)
         if (error) { showToast(`Delete failed: ${error.message}`, 'error'); return }
-        showToast('Exam removed.', 'warn')
+        showToast('Exam deleted. Scores remain.', 'warn')
         logAction('Exam deleted', ex.title)
+        refresh()
+      }
+    )
+  }
+
+  function bulkRemoveExams() {
+    if (selectedIds.length === 0) return
+    askConfirm(
+      `Delete ${selectedIds.length} Exams?`,
+      `Are you sure you want to delete ${selectedIds.length} selected exams? Student scores will be protected and remain in the database.`,
+      async () => {
+        const { error } = await supabase.from('cbt_exams').delete().in('id', selectedIds)
+        if (error) { showToast(`Bulk delete failed: ${error.message}`, 'error'); return }
+        showToast(`${selectedIds.length} exam(s) deleted. Scores remain.`, 'warn')
+        logAction('Bulk exams deleted', `${selectedIds.length} removed`)
+        setSelectedIds([])
         refresh()
       }
     )
@@ -2022,7 +2127,12 @@ function ExamList({
             <h2 className="font-semibold text-[#4A2E1B]">CBT Exams</h2>
             <p className="text-xs text-gray-500 mt-0.5">{exams.length} exam(s) · {exams.filter((e) => examDerivedStatus(e) === 'live').length} live now</p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {selectedIds.length > 0 && (
+              <button onClick={bulkRemoveExams} className="text-xs font-bold bg-red-600 text-white px-4 py-2.5 rounded-xl hover:bg-red-700">
+                Delete Selected ({selectedIds.length})
+              </button>
+            )}
             <button 
               onClick={unpublishAllLive} 
               className="text-xs font-bold bg-amber-600 text-white px-4 py-2.5 rounded-xl hover:bg-amber-700"
@@ -2120,6 +2230,9 @@ function ExamList({
           <table className="w-full text-left text-xs">
             <thead className="bg-[#4A2E1B] text-white text-[11px] uppercase tracking-wider sticky top-0">
               <tr>
+                <th className="px-3 py-3 w-10 text-white cursor-pointer" onClick={toggleAll}>
+                  <input type="checkbox" className="w-4 h-4 rounded border-white/50 text-pink-600 cursor-pointer" checked={filtered.length > 0 && selectedIds.length === filtered.length} readOnly />
+                </th>
                 <th className="px-4 py-3 text-white">Title</th>
                 <th className="px-4 py-3 text-white">Class</th>
                 <th className="px-4 py-3 text-white">Subject</th>
@@ -2131,7 +2244,7 @@ function ExamList({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
-              {filtered.length === 0 && <tr><td colSpan={8} className="px-4 py-12 text-center text-xs text-gray-500 italic bg-white">No exams match your filters.</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={9} className="px-4 py-12 text-center text-xs text-gray-500 italic bg-white">No exams match your filters.</td></tr>}
               {filtered.map((ex) => {
                 const status = examDerivedStatus(ex)
                 const tone =
@@ -2140,7 +2253,10 @@ function ExamList({
                   status === 'closed' ? 'bg-slate-100 text-gray-700 ring-slate-200' :
                   'bg-amber-50 text-amber-700 ring-amber-200'
                 return (
-                  <tr key={ex.id} className="hover:bg-pink-50/40">
+                  <tr key={ex.id} className={`hover:bg-pink-50/40 ${selectedIds.includes(ex.id) ? 'bg-pink-50/60' : ''}`}>
+                    <td className="px-3 py-3 bg-white cursor-pointer" onClick={() => toggleSelect(ex.id)}>
+                       <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-pink-600" checked={selectedIds.includes(ex.id)} readOnly />
+                    </td>
                     <td className="px-4 py-3 font-bold text-[#4A2E1B] bg-white">
                       <button onClick={() => onOpen(ex.id)} className="text-left hover:text-pink-700 hover:underline">
                         {ex.title}
@@ -2223,19 +2339,11 @@ function ExamDetail({
   function deleteExam() {
     askConfirm(
       'Delete Exam?', 
-      `Are you sure you want to delete "${exam.title}"? \n\nWARNING: If you proceed, student scores might be lost. If you want to keep scores, click "Cancel" and simply change the exam status to Draft instead.`, 
+      `Are you sure you want to delete "${exam.title}"? Student scores will be protected and remain in the database until manually deleted from the Broadsheet tab.`, 
       async () => {
-        // Check if attempts exist first
-        const { count } = await supabase.from('cbt_attempts').select('*', { count: 'exact', head: true }).eq('exam_id', exam.id)
-        
-        if (count && count > 0) {
-           showToast(`Cannot delete: ${count} students have already taken this exam. Unpublish it instead to preserve scores.`, 'error')
-           return
-        }
-
         const { error } = await supabase.from('cbt_exams').delete().eq('id', exam.id)
         if (error) { showToast(`Delete failed: ${error.message}`, 'error'); return }
-        showToast('Exam deleted.', 'warn')
+        showToast('Exam deleted. Scores remain.', 'warn')
         logAction('Exam deleted', exam.title)
         onBack()
         refresh()
