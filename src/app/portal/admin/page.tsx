@@ -2,7 +2,7 @@
 
 /* ============================================================================
    THE TRUSTWORTHY SCHOOLS — ADMIN CONTROL CENTER
-   v6.0 — Passports, Broadsheet Download, Locks, Multi-class Teachers
+   v6.1 — Multi-Class Exams, Bulk Unpublish, Score Protection
    ============================================================================ */
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
@@ -27,7 +27,7 @@ const SCHOOL = {
   website: 'www.thetrustworthyschools.com',
   logo: 'https://raw.githubusercontent.com/ideolixlearninghub/Trustworthy_schoolsexam/main/The%20trustworthy%20school%20logo.jpg',
   session: '2025/2026',
-  version: '6.0',
+  version: '6.1',
 }
 
 const TERMS = ['First Term', 'Second Term', 'Third Term'] as const
@@ -1872,8 +1872,13 @@ function ExamList({
 }) {
   const [showCreate, setShowCreate] = useState(false)
   const [form, setForm] = useState({
-    title: '', class_id: '', subject_id: '',
-    duration_minutes: 30, session: SCHOOL.session, term: 'First Term' as Term, status: 'draft' as 'draft' | 'published',
+    title: '', 
+    class_ids: [] as string[], // Changed to array for multi-class creation
+    subject_id: '',
+    duration_minutes: 30, 
+    session: SCHOOL.session, 
+    term: 'First Term' as Term, 
+    status: 'draft' as 'draft' | 'published',
   })
   const [saving, setSaving] = useState(false)
   const [q, setQ] = useState('')
@@ -1893,52 +1898,111 @@ function ExamList({
     return m
   }, [questions])
 
+  function toggleClass(id: string) {
+    setForm((prev) => {
+      const has = prev.class_ids.includes(id)
+      return {
+        ...prev,
+        class_ids: has
+          ? prev.class_ids.filter((x) => x !== id)
+          : [...prev.class_ids, id],
+      }
+    })
+  }
+
   async function createExam(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.class_id || !form.subject_id) { showToast('Pick class and subject.', 'error'); return }
+    if (form.class_ids.length === 0 || !form.subject_id) { 
+      showToast('Pick at least one class and a subject.', 'error'); 
+      return 
+    }
     setSaving(true)
 
+    // Pre-check for published exams to prevent duplicates
     if (form.status === 'published') {
-      const { data: existing } = await supabase
-        .from('cbt_exams').select('id')
-        .eq('class_id', form.class_id).eq('subject_id', form.subject_id)
-        .eq('term', form.term).eq('session', form.session)
-        .eq('status', 'published').maybeSingle()
-      if (existing) {
-        showToast(`${classById[form.class_id]} · ${subjectById[form.subject_id]} already has a published exam for ${form.term}.`, 'error')
-        setSaving(false)
-        return
+      for (const cid of form.class_ids) {
+        const { data: existing } = await supabase
+          .from('cbt_exams').select('id')
+          .eq('class_id', cid).eq('subject_id', form.subject_id)
+          .eq('term', form.term).eq('session', form.session)
+          .eq('status', 'published').maybeSingle()
+        if (existing) {
+          showToast(`${classById[cid]} · ${subjectById[form.subject_id]} already has a published exam for ${form.term}.`, 'error')
+          setSaving(false)
+          return
+        }
       }
     }
 
-    const { data, error } = await supabase
-      .from('cbt_exams')
-      .insert([{
-        ...form,
-        published_at: form.status === 'published' ? new Date().toISOString() : null,
-      }])
-      .select()
-      .single()
+    const payloads = form.class_ids.map((cid) => ({
+      title: form.title,
+      class_id: cid,
+      subject_id: form.subject_id,
+      duration_minutes: form.duration_minutes,
+      session: form.session,
+      term: form.term,
+      status: form.status,
+      published_at: form.status === 'published' ? new Date().toISOString() : null,
+    }))
+
+    const { data, error } = await supabase.from('cbt_exams').insert(payloads).select()
 
     setSaving(false)
     if (error) { showToast(`Save failed: ${error.message}`, 'error'); return }
 
-    showToast(`Exam "${form.title}" created.`)
-    logAction('Exam created', `${form.title} · ${form.status}`)
-    setForm({ title: '', class_id: '', subject_id: '', duration_minutes: 30, session: SCHOOL.session, term: 'First Term', status: 'draft' })
+    showToast(`${payloads.length} exam(s) created successfully.`)
+    logAction('Exams created', `${form.title} · ${payloads.length} classes`)
+    setForm({ title: '', class_ids: [], subject_id: '', duration_minutes: 30, session: SCHOOL.session, term: 'First Term', status: 'draft' })
     setShowCreate(false)
     refresh()
-    if (data?.id) onOpen(data.id)
+    // Open the first created exam
+    if (data && data.length > 0) onOpen(data[0].id)
   }
 
+  // Step 2: Bulk Unpublish
+  async function unpublishAllLive() {
+    askConfirm(
+      'Unpublish ALL Live Exams?',
+      'This will immediately hide all live exams from students and teachers. They will be moved back to Draft status. Continue?',
+      async () => {
+        const { error } = await supabase
+          .from('cbt_exams')
+          .update({ status: 'draft' })
+          .eq('status', 'published')
+          
+        if (error) { 
+          showToast(`Bulk unpublish failed: ${error.message}`, 'error'); 
+          return 
+        }
+        
+        showToast('All live exams unpublished.', 'warn')
+        logAction('Bulk Unpublish', 'All live exams moved to draft')
+        refresh()
+      }
+    )
+  }
+
+  // Step 3: Score Protection
   function removeExam(ex: CbtExam) {
-    askConfirm('Delete Exam?', `Remove "${ex.title}" and all its questions?`, async () => {
-      const { error } = await supabase.from('cbt_exams').delete().eq('id', ex.id)
-      if (error) { showToast(`Delete failed: ${error.message}`, 'error'); return }
-      showToast('Exam removed.', 'warn')
-      logAction('Exam deleted', ex.title)
-      refresh()
-    })
+    askConfirm(
+      'Delete Exam?', 
+      `Are you sure you want to delete "${ex.title}"? \n\nWARNING: If you proceed, student scores might be lost. If you want to keep scores, click "Cancel" and simply change the exam status to Draft instead.`, 
+      async () => {
+        // Check if attempts exist first
+        const { count } = await supabase.from('cbt_attempts').select('*', { count: 'exact', head: true }).eq('exam_id', ex.id)
+        
+        if (count && count > 0) {
+           showToast(`Cannot delete: ${count} students have already taken this exam. Unpublish it instead to preserve scores.`, 'error')
+           return
+        }
+
+        const { error } = await supabase.from('cbt_exams').delete().eq('id', ex.id)
+        if (error) { showToast(`Delete failed: ${error.message}`, 'error'); return }
+        showToast('Exam removed.', 'warn')
+        logAction('Exam deleted', ex.title)
+        refresh()
+      }
+    )
   }
 
   const filtered = useMemo(() => {
@@ -1958,9 +2022,17 @@ function ExamList({
             <h2 className="font-semibold text-[#4A2E1B]">CBT Exams</h2>
             <p className="text-xs text-gray-500 mt-0.5">{exams.length} exam(s) · {exams.filter((e) => examDerivedStatus(e) === 'live').length} live now</p>
           </div>
-          <button onClick={() => setShowCreate((v) => !v)} className="text-xs font-bold bg-pink-600 text-white px-4 py-2.5 rounded-xl hover:bg-pink-700">
-            {showCreate ? 'Close' : '+ New Exam'}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button 
+              onClick={unpublishAllLive} 
+              className="text-xs font-bold bg-amber-600 text-white px-4 py-2.5 rounded-xl hover:bg-amber-700"
+            >
+              🛑 Unpublish All Live
+            </button>
+            <button onClick={() => setShowCreate((v) => !v)} className="text-xs font-bold bg-pink-600 text-white px-4 py-2.5 rounded-xl hover:bg-pink-700">
+              {showCreate ? 'Close' : '+ New Exam'}
+            </button>
+          </div>
         </div>
 
         {showCreate && (
@@ -1968,13 +2040,27 @@ function ExamList({
             <FormField label="Title" required>
               <input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Mid-Term Chemistry Test" className="w-full text-sm px-3.5 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
             </FormField>
+            
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <FormField label="Class" required>
-                <select required value={form.class_id} onChange={(e) => setForm({ ...form, class_id: e.target.value })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]">
-                  <option value="">-- Choose --</option>
-                  {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </FormField>
+              <div>
+                <label className="block text-xs font-bold text-[#4A2E1B] mb-1">
+                  Classes <span className="text-pink-600">*</span>
+                  <span className="text-[10px] text-gray-500 font-normal ml-1">(tick all that apply)</span>
+                </label>
+                <div className="max-h-40 overflow-y-auto border border-pink-200 rounded-xl p-2 space-y-1 bg-white">
+                  {classes.map((c) => (
+                    <label key={c.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-pink-50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.class_ids.includes(c.id)}
+                        onChange={() => toggleClass(c.id)}
+                        className="w-4 h-4 rounded border-pink-300 text-pink-600 focus:ring-pink-500"
+                      />
+                      <span className="text-sm text-[#1A2332] flex-1">{c.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
               <FormField label="Subject" required>
                 <select required value={form.subject_id} onChange={(e) => setForm({ ...form, subject_id: e.target.value })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]">
                   <option value="">-- Choose --</option>
@@ -1982,6 +2068,7 @@ function ExamList({
                 </select>
               </FormField>
             </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <FormField label="Duration (min)">
                 <input type="number" min={1} value={form.duration_minutes} onChange={(e) => setForm({ ...form, duration_minutes: Number(e.target.value) })} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none text-[#1A2332]" />
@@ -2003,7 +2090,7 @@ function ExamList({
             </FormField>
             <div className="flex justify-end">
               <button type="submit" disabled={saving} className="bg-pink-600 hover:bg-pink-700 text-white font-semibold px-5 py-2.5 rounded-xl text-sm disabled:opacity-50">
-                {saving ? 'Creating…' : 'Create Exam'}
+                {saving ? 'Creating…' : 'Create Exam(s)'}
               </button>
             </div>
           </form>
@@ -2134,14 +2221,26 @@ function ExamDetail({
   }
 
   function deleteExam() {
-    askConfirm('Delete Exam?', `Permanently delete "${exam.title}" and all its questions?`, async () => {
-      const { error } = await supabase.from('cbt_exams').delete().eq('id', exam.id)
-      if (error) { showToast(`Delete failed: ${error.message}`, 'error'); return }
-      showToast('Exam deleted.', 'warn')
-      logAction('Exam deleted', exam.title)
-      onBack()
-      refresh()
-    })
+    askConfirm(
+      'Delete Exam?', 
+      `Are you sure you want to delete "${exam.title}"? \n\nWARNING: If you proceed, student scores might be lost. If you want to keep scores, click "Cancel" and simply change the exam status to Draft instead.`, 
+      async () => {
+        // Check if attempts exist first
+        const { count } = await supabase.from('cbt_attempts').select('*', { count: 'exact', head: true }).eq('exam_id', exam.id)
+        
+        if (count && count > 0) {
+           showToast(`Cannot delete: ${count} students have already taken this exam. Unpublish it instead to preserve scores.`, 'error')
+           return
+        }
+
+        const { error } = await supabase.from('cbt_exams').delete().eq('id', exam.id)
+        if (error) { showToast(`Delete failed: ${error.message}`, 'error'); return }
+        showToast('Exam deleted.', 'warn')
+        logAction('Exam deleted', exam.title)
+        onBack()
+        refresh()
+      }
+    )
   }
 
   function deleteQuestion(q: Question) {

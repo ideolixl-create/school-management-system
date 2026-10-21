@@ -270,13 +270,29 @@ function ExamDetail({ examId, onBack }: { examId: string; onBack: () => void }) 
     }
   }
 
-  /* -------------------- DELETE EXAM -------------------- */
+  /* -------------------- DELETE EXAM (WITH SCORE PROTECTION) -------------------- */
   function deleteExam() {
     if (!exam) return
     askConfirm(
       'Delete Exam?',
-      `Permanently delete "${exam.title}", all ${questions.length} questions, and any attempts. This cannot be undone.`,
+      `Are you sure you want to permanently delete "${exam.title}" and all its questions?\n\nWARNING: If students have already taken this exam, deletion will be blocked to protect their scores. If you just want to hide it, click "Cancel" and Unpublish it instead.`,
       async () => {
+        // Check for attempts first
+        const { count, error: countErr } = await supabase
+          .from('cbt_attempts')
+          .select('*', { count: 'exact', head: true })
+          .eq('exam_id', exam.id)
+
+        if (countErr) {
+          showToast(`Could not verify attempts: ${countErr.message}`, 'error')
+          return
+        }
+
+        if (count && count > 0) {
+          showToast(`Cannot delete: ${count} student(s) have already taken this exam. Unpublish it to hide it instead.`, 'error')
+          return
+        }
+
         const { error } = await supabase.from('cbt_exams').delete().eq('id', exam.id)
         if (error) { showToast(`Delete failed: ${error.message}`, 'error'); return }
         showToast('Exam deleted.', 'warn')
@@ -446,7 +462,7 @@ function ExamDetail({ examId, onBack }: { examId: string; onBack: () => void }) 
           <div className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
               <h3 className="font-bold text-[#4A2E1B] text-base">{confirmState.title}</h3>
-              <p className="text-sm text-gray-600 mt-1">{confirmState.message}</p>
+              <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap">{confirmState.message}</p>
               <div className="mt-5 flex justify-end gap-2">
                 <button onClick={() => setConfirmState(null)} className="px-4 py-2 rounded-xl text-xs font-bold text-gray-700 hover:bg-slate-100">Cancel</button>
                 <button onClick={() => { confirmState.onConfirm(); setConfirmState(null) }} className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700">Confirm</button>
