@@ -2,15 +2,13 @@
 
 /* ============================================================================
    THE TRUSTWORTHY SCHOOLS — REPORT CARD COMPONENT
-   Shared by: admin preview (broadsheet tab) + student portal
-   Renders a single, printable report card.
    ============================================================================ */
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
 /* ============================================================================
-   CONFIG — easy to change in one place
+   CONFIG
    ============================================================================ */
 
 const PROPRIETOR_NAME = 'M.B. Bello'
@@ -79,7 +77,7 @@ export type ReportCardData = {
   behavioural: ReportBehavioural | null
   attendanceSummary: ReportAttendanceSummary | null
   attendanceRows: ReportAttendanceRow[]
-  classRanks: Record<string, number>       // subjectId -> rank (1-based)
+  classRanks: Record<string, number>
   overallRank: number | null
   totalStudentsInClass: number
 }
@@ -148,7 +146,7 @@ function ageFromDob(dob: string | null | undefined): number | null {
 }
 
 /* ============================================================================
-   DATA LOADER — used by admin preview
+   DATA LOADER
    ============================================================================ */
 
 export async function loadReportCardData(
@@ -161,26 +159,9 @@ export async function loadReportCardData(
   const [clsRes, subjRes, scRes, behRes, attSumRes, attRowsRes, classmatesRes] = await Promise.all([
     supabase.from('classes').select('name').eq('id', student.class_id).maybeSingle(),
     supabase.from('subjects').select('*').order('name'),
-    supabase
-      .from('scores')
-      .select('*')
-      .eq('student_id', student.id)
-      .eq('term', term)
-      .eq('session', session),
-    supabase
-      .from('behavioural_ratings')
-      .select('*')
-      .eq('student_id', student.id)
-      .eq('term', term)
-      .eq('session', session)
-      .maybeSingle(),
-    supabase
-      .from('attendance_summary')
-      .select('*')
-      .eq('student_id', student.id)
-      .eq('term', term)
-      .eq('session', session)
-      .maybeSingle(),
+    supabase.from('scores').select('*').eq('student_id', student.id).eq('term', term).eq('session', session),
+    supabase.from('behavioural_ratings').select('*').eq('student_id', student.id).eq('term', term).eq('session', session).maybeSingle(),
+    supabase.from('attendance_summary').select('*').eq('student_id', student.id).eq('term', term).eq('session', session).maybeSingle(),
     supabase.from('attendance').select('*').eq('student_id', student.id),
     supabase.from('students').select('id').eq('class_id', student.class_id),
   ])
@@ -230,20 +211,8 @@ export async function loadReportCardData(
     session,
     subjects: (subjRes.data || []) as ReportSubject[],
     scores: (scRes.data || []) as ReportScore[],
-    behavioural: beh
-      ? {
-          affective: beh.affective || {},
-          psychomotor: beh.psychomotor || {},
-          teacher_comment: beh.teacher_comment || null,
-        }
-      : null,
-    attendanceSummary: summary
-      ? {
-          days_present: summary.days_present,
-          total_days: summary.total_days,
-          remark: summary.remark || null,
-        }
-      : null,
+    behavioural: beh ? { affective: beh.affective || {}, psychomotor: beh.psychomotor || {}, teacher_comment: beh.teacher_comment || null } : null,
+    attendanceSummary: summary ? { days_present: summary.days_present, total_days: summary.total_days, remark: summary.remark || null } : null,
     attendanceRows: (attRowsRes.data || []) as ReportAttendanceRow[],
     classRanks,
     overallRank,
@@ -281,7 +250,6 @@ export default function ReportCard({ data }: { data: ReportCardData }) {
   const avg = rows.length > 0 ? (sum / (rows.length * 100)) * 100 : 0
   const avgStr = avg.toFixed(2)
 
-  // Attendance: prefer term summary, fall back to daily
   const attDisplay = (() => {
     if (data.attendanceSummary) {
       const { days_present, total_days } = data.attendanceSummary
@@ -298,59 +266,29 @@ export default function ReportCard({ data }: { data: ReportCardData }) {
 
   return (
     <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-6 sm:p-8 print:shadow-none print:ring-0 print:rounded-none report-card-root">
-      {/* Print styles: hide everything else, show only the card */}
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-            @media print {
-              body * { visibility: hidden !important; }
-              .report-card-root, .report-card-root * { visibility: visible !important; }
-              .report-card-root {
-                position: absolute !important;
-                left: 0 !important;
-                top: 0 !important;
-                width: 100% !important;
-                padding: 0 !important;
-              }
-              .report-card-no-print { display: none !important; }
-              @page { size: A4 portrait; margin: 12mm; }
-            }
-            .signature-img, .stamp-img {
-              mix-blend-mode: multiply;
-            }
-          `,
-        }}
-      />
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          body * { visibility: hidden !important; }
+          .report-card-root, .report-card-root * { visibility: visible !important; }
+          .report-card-root { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; padding: 0 !important; }
+          .report-card-no-print { display: none !important; }
+          @page { size: A4 portrait; margin: 12mm; }
+        }
+        .signature-img, .stamp-img { mix-blend-mode: multiply; }
+      `}} />
 
-      {/* HEADER — logo center, passport top-right */}
+      {/* HEADER */}
       <div className="relative pb-4 border-b-2 border-[#4A2E1B]">
         <div className="absolute top-0 right-0 z-10">
           <div className="relative">
             {student.passport_url ? (
-              <img
-                src={student.passport_url}
-                alt={student.full_name}
-                className="w-20 h-24 sm:w-24 sm:h-28 rounded-md object-cover ring-2 ring-[#4A2E1B]/30 bg-slate-100 shadow-sm"
-                onError={(e) => {
-                  const img = e.currentTarget as HTMLImageElement
-                  img.style.display = 'none'
-                  const fb = img.nextElementSibling as HTMLElement | null
-                  if (fb) fb.style.display = 'flex'
-                }}
-              />
+              <img src={student.passport_url} alt={student.full_name} className="w-20 h-24 sm:w-24 sm:h-28 rounded-md object-cover ring-2 ring-[#4A2E1B]/30 bg-slate-100 shadow-sm" onError={(e) => { const img = e.currentTarget as HTMLImageElement; img.style.display = 'none'; const fb = img.nextElementSibling as HTMLElement | null; if (fb) fb.style.display = 'flex'; }} />
             ) : null}
             {!student.passport_url && (
               <div className="w-20 h-24 sm:w-24 sm:h-28 rounded-md ring-2 ring-[#4A2E1B]/30 bg-slate-50 flex flex-col items-center justify-center text-gray-400 text-[9px] font-bold text-center px-1">
-                <span className="text-lg mb-1">👤</span>
-                PASSPORT
+                <span className="text-lg mb-1">👤</span>PASSPORT
               </div>
             )}
-            <div
-              className="w-20 h-24 sm:w-24 sm:h-28 rounded-md ring-2 ring-[#4A2E1B]/30 bg-pink-500 text-white font-black hidden items-center justify-center text-2xl"
-              style={{ display: 'none' }}
-            >
-              {student.full_name.split(' ').filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join('')}
-            </div>
           </div>
         </div>
 
@@ -404,13 +342,7 @@ export default function ReportCard({ data }: { data: ReportCardData }) {
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={6} className="p-6 text-center text-gray-400 italic text-xs">
-                  No scores recorded for this term.
-                </td>
-              </tr>
-            )}
+            {rows.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-gray-400 italic text-xs">No scores recorded for this term.</td></tr>}
           </tbody>
           {rows.length > 0 && (
             <tfoot className="bg-slate-100">
@@ -443,9 +375,7 @@ export default function ReportCard({ data }: { data: ReportCardData }) {
       {behavioural && (
         <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <h3 className="text-xs font-black uppercase tracking-wider text-[#4A2E1B] mb-2 border-b border-slate-200 pb-1">
-              Affective Traits
-            </h3>
+            <h3 className="text-xs font-black uppercase tracking-wider text-[#4A2E1B] mb-2 border-b border-slate-200 pb-1">Affective Traits</h3>
             <table className="w-full text-[11px]">
               <tbody>
                 {AFFECTIVE_TRAITS.map((t) => (
@@ -453,9 +383,7 @@ export default function ReportCard({ data }: { data: ReportCardData }) {
                     <td className="py-1 text-gray-700">{t.label}</td>
                     <td className="py-1 text-right font-bold text-[#4A2E1B]">
                       {behavioural.affective?.[t.key] ?? '—'}
-                      {behavioural.affective?.[t.key] ? (
-                        <span className="text-gray-400 font-normal ml-1">({RATING_LABELS[behavioural.affective[t.key]]})</span>
-                      ) : null}
+                      {behavioural.affective?.[t.key] ? <span className="text-gray-400 font-normal ml-1">({RATING_LABELS[behavioural.affective[t.key]]})</span> : null}
                     </td>
                   </tr>
                 ))}
@@ -463,9 +391,7 @@ export default function ReportCard({ data }: { data: ReportCardData }) {
             </table>
           </div>
           <div>
-            <h3 className="text-xs font-black uppercase tracking-wider text-[#4A2E1B] mb-2 border-b border-slate-200 pb-1">
-              Psychomotor Skills
-            </h3>
+            <h3 className="text-xs font-black uppercase tracking-wider text-[#4A2E1B] mb-2 border-b border-slate-200 pb-1">Psychomotor Skills</h3>
             <table className="w-full text-[11px]">
               <tbody>
                 {PSYCHOMOTOR_SKILLS.map((t) => (
@@ -473,9 +399,7 @@ export default function ReportCard({ data }: { data: ReportCardData }) {
                     <td className="py-1 text-gray-700">{t.label}</td>
                     <td className="py-1 text-right font-bold text-[#4A2E1B]">
                       {behavioural.psychomotor?.[t.key] ?? '—'}
-                      {behavioural.psychomotor?.[t.key] ? (
-                        <span className="text-gray-400 font-normal ml-1">({RATING_LABELS[behavioural.psychomotor[t.key]]})</span>
-                      ) : null}
+                      {behavioural.psychomotor?.[t.key] ? <span className="text-gray-400 font-normal ml-1">({RATING_LABELS[behavioural.psychomotor[t.key]]})</span> : null}
                     </td>
                   </tr>
                 ))}
@@ -488,38 +412,34 @@ export default function ReportCard({ data }: { data: ReportCardData }) {
       {/* TEACHER'S COMMENT */}
       {behavioural?.teacher_comment && (
         <div className="mt-5">
-          <h3 className="text-xs font-black uppercase tracking-wider text-[#4A2E1B] mb-2 border-b border-slate-200 pb-1">
-            Class Teacher's Comment
-          </h3>
-          <p className="text-xs italic text-gray-700 bg-slate-50 border border-slate-200 rounded-lg p-3">
-            "{behavioural.teacher_comment}"
-          </p>
+          <h3 className="text-xs font-black uppercase tracking-wider text-[#4A2E1B] mb-2 border-b border-slate-200 pb-1">Class Teacher's Comment</h3>
+          <p className="text-xs italic text-gray-700 bg-slate-50 border border-slate-200 rounded-lg p-3">"{behavioural.teacher_comment}"</p>
         </div>
       )}
 
       {/* FOOTER — Name on left, Stamp with Signature inside on right */}
-      <div className="mt-8 pt-6 border-t-2 border-dashed border-slate-300 flex items-end justify-between px-4 sm:px-12">
+      <div className="mt-10 pt-6 border-t-2 border-dashed border-slate-300 flex items-end justify-between px-4 sm:px-12">
         
-        {/* Left Side: Proprietor Name */}
-        <div className="text-center w-48">
-          <p className="text-xs font-bold text-[#4A2E1B] uppercase tracking-wider mb-1">Proprietress</p>
-          <p className="text-sm font-black text-gray-900 border-t border-black pt-1">{PROPRIETOR_NAME}</p>
+        {/* Left Side: Name then Title */}
+        <div className="text-center w-56 pb-2">
+          <p className="text-sm font-black text-gray-900 border-b border-black pb-1 mb-1">{PROPRIETOR_NAME}</p>
+          <p className="text-xs font-bold text-[#4A2E1B] uppercase tracking-wider">Proprietress</p>
         </div>
 
         {/* Right Side: Stamp with Signature inside */}
-        <div className="relative w-32 h-32 flex items-center justify-center">
+        <div className="relative w-36 h-36 flex items-center justify-center">
           {/* The Stamp (Background) */}
           <img
             src={SCHOOL_STAMP_URL}
             alt="School Stamp"
-            className="stamp-img absolute inset-0 w-full h-full object-contain opacity-80"
+            className="stamp-img absolute inset-0 w-full h-full object-contain"
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
           />
           {/* The Signature (Foreground) */}
           <img
             src={PROPRIETOR_SIGNATURE_URL}
             alt="Proprietor's Signature"
-            className="signature-img relative z-10 max-h-16 max-w-[100px] object-contain"
+            className="signature-img relative z-10 max-h-20 max-w-[120px] object-contain"
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
           />
         </div>
