@@ -1,31 +1,31 @@
 ﻿import { NextResponse } from 'next/server'
-import { verifySessionToken, COOKIE_NAMES } from '@/lib/session'
+import { createSessionToken, COOKIE_NAMES } from '@/lib/session'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export async function GET(req: Request) {
-  // Parse cookies directly from the request headers. 
-  // This is the most bulletproof way in Next.js 16.
-  const cookieHeader = req.headers.get('cookie') || ''
-  const cookies = Object.fromEntries(
-    cookieHeader.split(';').map((c) => {
-      const [key, ...v] = c.trim().split('=')
-      return [key, v.join('=')]
-    })
-  )
+export async function POST(req: Request) {
+  let body: { password?: string }
+  try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid request.' }, { status: 400 }) }
 
-  const token = cookies[COOKIE_NAMES.admin]
-  
-  console.log('[API /api/me/admin] Token from cookie:', token ? 'EXISTS' : 'MISSING')
+  const password = typeof body.password === 'string' ? body.password : ''
+  const expected = process.env.ADMIN_PASSWORD
 
-  const payload = verifySessionToken(token)
-  
-  console.log('[API /api/me/admin] Payload verified:', payload ? 'VALID' : 'INVALID')
+  if (!expected) return NextResponse.json({ error: 'Server not configured. ADMIN_PASSWORD missing.' }, { status: 500 })
 
-  if (!payload || payload.role !== 'admin') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const ok = password.length === expected.length && password.split('').reduce((acc, c, i) => acc | (c.charCodeAt(0) ^ expected.charCodeAt(i)), 0) === 0
+
+  if (!ok) return NextResponse.json({ error: 'Incorrect admin password.' }, { status: 401 })
+
+  const token = createSessionToken('admin', 'admin')
   
-  return NextResponse.json({ ok: true, role: 'admin', exp: payload.exp })
+  // Manually set the cookie header to bypass any Next.js 16 response quirks
+  const res = NextResponse.json({ ok: true })
+  const maxAge = 30 * 60 // 30 minutes
+  const isProd = process.env.NODE_ENV === 'production'
+  const cookieString = `${COOKIE_NAMES.admin}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${isProd ? '; Secure' : ''}`
+  
+  res.headers.set('Set-Cookie', cookieString)
+  
+  return res
 }
