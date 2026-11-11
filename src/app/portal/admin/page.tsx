@@ -2,20 +2,23 @@
 
 /* ============================================================================
    THE TRUSTWORTHY SCHOOLS — ADMIN CONTROL CENTER
-   v7.0 — 2026/2027 Session, Bulk Deletions, Orphan Score Protection
+   v8.0 — Security Phase 1, Report Card Preview, Shared ReportCard component
    ============================================================================ */
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import * as XLSX from 'xlsx'
+import ReportCard, {
+  loadReportCardData,
+  type ReportCardData,
+  type ReportStudent,
+} from '@/components/ReportCard'
 
 /* ============================================================================
    CONFIG
    ============================================================================ */
 
-const ADMIN_PASSWORD = 'f09b302c@2TS'
-const SESSION_KEY = 'tts.admin.session'
-const SESSION_MINUTES = 30
 const LIVE_REFRESH_MS = 10000
 
 const SCHOOL = {
@@ -26,8 +29,8 @@ const SCHOOL = {
   email: 'trustworthysch16@gmail.com',
   website: 'www.thetrustworthyschools.com',
   logo: 'https://raw.githubusercontent.com/ideolixlearninghub/Trustworthy_schoolsexam/main/The%20trustworthy%20school%20logo.jpg',
-  session: '2026/2027', // Updated Session
-  version: '7.0',
+  session: '2026/2027',
+  version: '8.0',
 }
 
 const TERMS = ['First Term', 'Second Term', 'Third Term'] as const
@@ -393,88 +396,45 @@ function GlobalStyles() {
 }
 
 /* ============================================================================
-   ROOT
+   ROOT COMPONENT
    ============================================================================ */
 
 export default function AdminDashboard() {
+  const router = useRouter()
   const [authed, setAuthed] = useState(false)
   const [bootChecked, setBootChecked] = useState(false)
 
   useEffect(() => {
-    const raw = sessionStorage.getItem(SESSION_KEY)
-    if (raw) {
+    let cancelled = false
+    ;(async () => {
       try {
-        const s = JSON.parse(raw)
-        if (s.expiresAt > Date.now()) setAuthed(true)
-        else sessionStorage.removeItem(SESSION_KEY)
-      } catch {}
-    }
-    setBootChecked(true)
-  }, [])
+        const res = await fetch('/api/me/admin', { cache: 'no-store' })
+        if (cancelled) return
+        if (res.ok) {
+          setAuthed(true)
+        } else {
+          router.replace('/login')
+          return
+        }
+      } catch {
+        router.replace('/login')
+        return
+      } finally {
+        if (!cancelled) setBootChecked(true)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [router])
 
-  if (!bootChecked) return null
-  if (!authed) return <PasswordGate onUnlock={() => setAuthed(true)} />
-  return <Console onLogout={() => setAuthed(false)} />
-}
-
-function PasswordGate({ onUnlock }: { onUnlock: () => void }) {
-  const [pass, setPass] = useState('')
-  const [show, setShow] = useState(false)
-  const [error, setError] = useState('')
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault()
-    if (pass === ADMIN_PASSWORD) {
-      sessionStorage.setItem(
-        SESSION_KEY,
-        JSON.stringify({ expiresAt: Date.now() + SESSION_MINUTES * 60 * 1000 })
-      )
-      onUnlock()
-    } else {
-      setError('Incorrect admin password.')
-      setPass('')
-    }
-  }
-
-  return (
-    <>
-      <GlobalStyles />
+  if (!bootChecked) {
+    return (
       <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white shadow-2xl rounded-2xl border border-pink-200 overflow-hidden">
-          <div className="bg-[#4A2E1B] text-white p-6 text-center border-b-4 border-pink-500 relative">
-            <button
-              onClick={() => (window.location.href = '/login')}
-              className="absolute left-4 top-4 bg-[#331E12] text-pink-300 px-3 py-1.5 rounded text-xs font-bold"
-            >
-              ← Login
-            </button>
-            <img src={SCHOOL.logo} alt="Logo" className="w-14 h-14 mx-auto rounded-full bg-white p-1 mb-2" />
-            <h1 className="text-lg font-extrabold">Admin Control Center</h1>
-            <p className="text-xs text-pink-300 mt-1 tracking-widest font-semibold">{SCHOOL.name.toUpperCase()}</p>
-          </div>
-          <form onSubmit={submit} className="p-6 space-y-4">
-            <div>
-              <label className="block text-sm font-bold text-[#4A2E1B] mb-1">Admin Password</label>
-              <div className="relative">
-                <input
-                  type={show ? 'text' : 'password'}
-                  value={pass}
-                  onChange={(e) => { setPass(e.target.value); setError('') }}
-                  autoFocus required placeholder="Enter admin password"
-                  className="w-full border p-3 pr-14 rounded-lg text-sm bg-white border-pink-300 focus:ring-2 focus:ring-pink-400 outline-none text-[#1A2332]"
-                />
-                <button type="button" onClick={() => setShow((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#4A2E1B]">
-                  {show ? 'Hide' : 'Show'}
-                </button>
-              </div>
-            </div>
-            {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm font-semibold rounded-lg px-4 py-3">{error}</div>}
-            <button type="submit" className="w-full bg-[#4A2E1B] text-white py-3 rounded-lg font-extrabold text-sm">Unlock Dashboard</button>
-          </form>
-        </div>
+        <p className="text-sm text-gray-500 italic">Verifying session…</p>
       </div>
-    </>
-  )
+    )
+  }
+  if (!authed) return null
+  return <Console onLogout={() => { setAuthed(false); router.push('/login') }} />
 }
 
 /* ============================================================================
@@ -586,8 +546,12 @@ function Console({ onLogout }: { onLogout: () => void }) {
     })()
   }, [tab])
 
-  function handleLogout() {
-    sessionStorage.removeItem(SESSION_KEY)
+  async function handleLogout() {
+    try {
+      await fetch('/api/logout', { method: 'POST' })
+    } catch {
+      // best-effort
+    }
     logAction('Admin signed out')
     onLogout()
   }
@@ -827,7 +791,7 @@ function QuickAction({ label, onClick }: { label: string; onClick: () => void })
 }
 
 /* ============================================================================
-   TAB: STUDENTS (Bulk Delete Added)
+   TAB: STUDENTS
    ============================================================================ */
 
 function StudentsTab({
@@ -844,6 +808,8 @@ function StudentsTab({
   })
   const [formPhoto, setFormPhoto] = useState<File | null>(null)
   const [formPhotoPreview, setFormPhotoPreview] = useState<string>('')
+  
+  const [previewStudent, setPreviewStudent] = useState<Student | null>(null)
 
   const [q, setQ] = useState('')
   const [filterClass, setFilterClass] = useState('')
@@ -857,7 +823,6 @@ function StudentsTab({
 
   const classById = useMemo(() => Object.fromEntries(classes.map((c) => [c.id, c.name])), [classes])
 
-  // Reset selection when search filters change
   useEffect(() => { setSelectedIds([]) }, [q, filterClass])
 
   function toggleSelect(id: string) {
@@ -975,7 +940,6 @@ function StudentsTab({
       `Delete ${selectedIds.length} Students?`,
       `Are you absolutely sure you want to permanently delete ${selectedIds.length} selected student(s)? All their associated data (passwords, photos) will be removed.`,
       async () => {
-        // Delete photos first
         const toDelete = students.filter(s => selectedIds.includes(s.id) && s.passport_url)
         for (const s of toDelete) {
           if (s.passport_url) await deletePassportByUrl(s.passport_url)
@@ -1286,6 +1250,7 @@ function StudentsTab({
                     <td className="px-4 py-3 text-[#1A2332] bg-white">{classById[s.class_id || ''] || '—'}</td>
                     <td className="px-4 py-3 text-center text-[#1A2332] bg-white">{ageFromDob(s.date_of_birth) ?? '—'}</td>
                     <td className="px-4 py-3 text-right whitespace-nowrap bg-white">
+                      <button onClick={() => setPreviewStudent(s)} className="text-purple-700 hover:text-purple-800 font-bold text-[11px] mr-3">Report Card</button>
                       <button onClick={() => setEditTarget(s)} className="text-blue-700 hover:text-blue-800 font-bold text-[11px] mr-3">Edit</button>
                       <button onClick={() => resetPassword(s)} className="text-amber-700 hover:text-amber-800 font-bold text-[11px] mr-3">Reset PW</button>
                       <button onClick={() => removeStudent(s)} className="text-red-700 hover:text-red-800 font-bold text-[11px]">Remove</button>
@@ -1301,6 +1266,15 @@ function StudentsTab({
 
       {editTarget && (
         <EditStudentModal student={editTarget} classes={classes} onClose={() => setEditTarget(null)} onSave={saveEdit} />
+      )}
+
+      {previewStudent && (
+        <ReportCardPreviewModal
+          student={previewStudent}
+          term={'First Term'}
+          session={SCHOOL.session}
+          onClose={() => setPreviewStudent(null)}
+        />
       )}
     </div>
   )
@@ -1416,7 +1390,92 @@ function EditStudentModal({
 }
 
 /* ============================================================================
-   TAB: TEACHERS (Bulk Delete Added)
+   REPORT CARD PREVIEW MODAL
+   ============================================================================ */
+
+function ReportCardPreviewModal({
+  student, term, session, onClose,
+}: {
+  student: Student
+  term: Term
+  session: string
+  onClose: () => void
+}) {
+  const [data, setData] = useState<ReportCardData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  
+  const [selectedTerm, setSelectedTerm] = useState<Term>(term)
+  const [selectedSession, setSelectedSession] = useState(session)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      setLoading(true)
+      setError(null)
+      
+      const loaded = await loadReportCardData(student as ReportStudent, selectedTerm, selectedSession)
+      if (cancelled) return
+      
+      if (!loaded) {
+        setError('Could not load report card data.')
+        setData(null)
+      } else {
+        setData(loaded)
+      }
+      setLoading(false)
+    })()
+    return () => { cancelled = true }
+  }, [student, selectedTerm, selectedSession])
+
+  return (
+    <div className="fixed inset-0 z-[150] bg-black/60 backdrop-blur-sm flex items-start justify-center p-4 sm:p-6 overflow-y-auto">
+      <div className="bg-slate-100 rounded-2xl shadow-2xl w-full max-w-4xl my-6">
+        <div className="sticky top-0 bg-white rounded-t-2xl px-5 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 z-10 print:hidden">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h3 className="font-bold text-[#4A2E1B] text-base">Report Card Preview</h3>
+            <select 
+              value={selectedTerm} 
+              onChange={(e) => setSelectedTerm(e.target.value as Term)}
+              className="text-xs font-bold px-3 py-1.5 border border-pink-200 rounded-lg outline-none"
+            >
+              {TERMS.map((t) => <option key={t}>{t}</option>)}
+            </select>
+            <input 
+              value={selectedSession} 
+              onChange={(e) => setSelectedSession(e.target.value)}
+              className="text-xs font-bold px-3 py-1.5 border border-pink-200 rounded-lg outline-none w-24"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => window.print()}
+              className="text-xs font-bold bg-purple-600 text-white px-4 py-2 rounded-xl hover:bg-purple-700"
+            >
+              🖨️ Download / Print PDF
+            </button>
+            <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-gray-600 font-bold">✕</button>
+          </div>
+        </div>
+
+        <div className="p-4 sm:p-6 bg-slate-100 rounded-b-2xl print:p-0 print:bg-white">
+          {loading ? (
+            <div className="text-center py-20 text-sm text-gray-500 italic bg-white rounded-2xl">Loading report card…</div>
+          ) : error ? (
+            <div className="text-center py-20 bg-red-50 text-red-700 text-sm font-bold rounded-2xl">{error}</div>
+          ) : data ? (
+            <div id="print-area">
+              <ReportCard data={data} />
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ============================================================================
+   TAB: TEACHERS
    ============================================================================ */
 
 function TeachersTab({
@@ -1899,7 +1958,7 @@ function QuestionsTab({
 }
 
 /* ============================================================================
-   TAB: EXAMS (Bulk Delete Added)
+   TAB: EXAMS
    ============================================================================ */
 
 function ExamsTab({
@@ -1987,7 +2046,6 @@ function ExamList({
     return m
   }, [questions])
 
-  // Reset selection when filters change
   useEffect(() => { setSelectedIds([]) }, [q, filterClass, filterStatus])
 
   function toggleSelect(id: string) {
@@ -3447,7 +3505,7 @@ function TheoryMarkingPanel({
 }
 
 /* ============================================================================
-   TAB: BROADSHEET (Download + Lock)
+   TAB: BROADSHEET (Download + Lock + Report Card Preview)
    ============================================================================ */
 
 function BroadsheetTab({
@@ -3465,6 +3523,7 @@ function BroadsheetTab({
   const [selectedClass, setSelectedClass] = useState('')
   const [selectedTerm, setSelectedTerm] = useState<Term>('First Term')
   const [session, setSession] = useState(SCHOOL.session)
+  const [previewStudent, setPreviewStudent] = useState<Student | null>(null)
 
   const classById = useMemo(() => Object.fromEntries(classes.map((c) => [c.id, c.name])), [classes])
   const subjectById = useMemo(() => Object.fromEntries(subjects.map((s) => [s.id, s.name])), [subjects])
@@ -3845,6 +3904,12 @@ function BroadsheetTab({
             </button>
           )}
 
+          {selectedClass && classStudents.length > 0 && (
+            <button onClick={() => setPreviewStudent(classStudents[0])} className="text-xs font-bold bg-purple-600 text-white px-4 py-2.5 rounded-xl hover:bg-purple-700 inline-flex items-center gap-2">
+              👁️ Preview Report Cards
+            </button>
+          )}
+
           {selectedClass && !isPublished && (
             <button onClick={publishReportCards} className="text-xs font-bold bg-emerald-600 text-white px-4 py-2.5 rounded-xl hover:bg-emerald-700 inline-flex items-center gap-2">
               🚀 Publish Report Cards
@@ -3934,7 +3999,15 @@ function BroadsheetTab({
                           )}
                         </td>
                         <td className="p-3 font-bold text-[#4A2E1B] bg-white">
-                          {r.name}
+                          <button
+                            onClick={() => {
+                              const st = classStudents.find((s) => s.id === r.id)
+                              if (st) setPreviewStudent(st)
+                            }}
+                            className="text-left hover:text-pink-700 hover:underline"
+                          >
+                            {r.name}
+                          </button>
                           <div className="text-[10px] text-gray-600 font-mono font-normal">{r.admissionNo}</div>
                         </td>
                         <td className="p-3 text-center text-[#1A2332] bg-white">{r.age ?? '—'}</td>
@@ -3961,6 +4034,15 @@ function BroadsheetTab({
             </div>
           )}
         </div>
+      )}
+
+      {previewStudent && (
+        <ReportCardPreviewModal
+          student={previewStudent}
+          term={selectedTerm}
+          session={session}
+          onClose={() => setPreviewStudent(null)}
+        />
       )}
     </div>
   )
