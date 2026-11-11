@@ -1,14 +1,8 @@
-/* ============================================================================
-   THE TRUSTWORTHY SCHOOLS — ROUTE PROTECTION
-   Guards /portal/admin, /portal/teacher, /portal/student
-   Next.js 16.3.6 — Node runtime middleware (stable in 15.2+)
-   ============================================================================ */
-
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { verifySessionToken, COOKIE_NAMES } from '@/lib/session'
 
-export const runtime = 'nodejs'
+export const runtime = 'nodejs' // Make sure this is here!
 
 export const config = {
   matcher: ['/portal/:path*'],
@@ -25,8 +19,11 @@ export function middleware(req: NextRequest) {
 
   if (!requiredRole) return NextResponse.next()
 
-  const token = req.cookies.get(COOKIE_NAMES[requiredRole])?.value
+  const cookieName = COOKIE_NAMES[requiredRole]
+  const token = req.cookies.get(cookieName)?.value
   const payload = verifySessionToken(token)
+
+  console.log(`[Middleware] Path: ${pathname} | Cookie: ${cookieName} | Token exists: ${!!token} | Verified: ${!!payload}`)
 
   if (!payload || payload.role !== requiredRole) {
     const url = req.nextUrl.clone()
