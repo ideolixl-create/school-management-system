@@ -2,8 +2,7 @@
 
 /* ============================================================================
    THE TRUSTWORTHY SCHOOLS — TEACHER PORTAL
-   v5.0 — Multi-class score entry fix, locked scores, behavioural gating,
-          passport photos, class-teacher vs subject-teacher separation
+   v6.0 — Server-side Auth, Term Summary Attendance, CBT Excel Export
    ============================================================================ */
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
@@ -76,8 +75,6 @@ type Announcement = {
   pinned: boolean
   published_at: string
   expires_at: string | null
-  created_by: string | null
-  created_at: string
 }
 
 type Toast = { id: number; msg: string; tone: 'success' | 'error' | 'info' | 'warn' }
@@ -129,17 +126,6 @@ function gradeFromTotal(total: number): string {
   return 'F9'
 }
 
-function ageFromDob(dob: string | null | undefined): number | null {
-  if (!dob) return null
-  const d = new Date(dob)
-  if (isNaN(d.getTime())) return null
-  const now = new Date()
-  let age = now.getFullYear() - d.getFullYear()
-  const m = now.getMonth() - d.getMonth()
-  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--
-  return age
-}
-
 function normalizeName(s: string): string {
   return String(s).trim().toLowerCase().replace(/\s+/g, ' ')
 }
@@ -165,10 +151,6 @@ function StudentAvatar({ student, size = 'md' }: { student: Student; size?: 'sm'
   return <div className={`${cls} bg-slate-100 flex items-center justify-center text-[9px] text-gray-400`}>—</div>
 }
 
-/* ============================================================================
-   GLOBAL STYLES
-   ============================================================================ */
-
 function GlobalStyles() {
   return (
     <style
@@ -193,7 +175,7 @@ function GlobalStyles() {
 }
 
 /* ============================================================================
-   MAIN
+   MAIN COMPONENT
    ============================================================================ */
 
 export default function TeacherPortal() {
@@ -218,16 +200,24 @@ export default function TeacherPortal() {
   }, [])
 
   useEffect(() => {
-    const stored = localStorage.getItem('loggedInTeacher')
-    if (!stored) { router.push('/login'); return }
-    try {
-      const parsed = JSON.parse(stored) as Teacher
-      setTeacher(parsed)
-    } catch {
-      router.push('/login')
-      return
-    }
-    setBooting(false)
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/me/teacher', { cache: 'no-store' })
+        if (cancelled) return
+        if (!res.ok) {
+          router.replace('/login')
+          return
+        }
+        const data = await res.json()
+        setTeacher(data.teacher)
+      } catch {
+        router.replace('/login')
+      } finally {
+        if (!cancelled) setBooting(false)
+      }
+    })()
+    return () => { cancelled = true }
   }, [router])
 
   useEffect(() => {
@@ -273,37 +263,31 @@ export default function TeacherPortal() {
     [subjects, teacherSubjectIds]
   )
 
-  // ─── SCORE ENTRY CLASSES ─────────────────────────────────────────────────
-  // Any teacher with subjects can enter scores for ANY class.
-  // The schema doesn't pin a subject teacher to specific classes, so we expose
-  // all classes to them so they can pick whichever class they actually teach.
   const scoreEntryClasses = useMemo(() => {
     if (!teacher) return [] as ClassRow[]
     if (teacherSubjects.length === 0) return [] as ClassRow[]
     return classes
   }, [teacher, classes, teacherSubjects])
 
-  // ─── CLASS-TEACHER OVERSIGHT CLASSES ─────────────────────────────────────
-  // Only used for behavioural ratings. Only class teachers (role_type = class
-  // or both) see their own assigned classes here — from teacher_classes.
   const classTeacherClasses = useMemo(() => {
     if (!teacher) return [] as ClassRow[]
     if (teacher.role_type === 'subject') return [] as ClassRow[]
     return classes.filter((c) => myClassIds.includes(c.id))
   }, [teacher, classes, myClassIds])
 
-  // Is this teacher a class teacher of at least one class? (controls Behavioural tab)
   const isClassTeacher = useMemo(() => {
     if (!teacher) return false
     return teacher.role_type === 'class' || teacher.role_type === 'both'
   }, [teacher])
 
-  function handleLogout() {
-    localStorage.removeItem('loggedInTeacher')
+  async function handleLogout() {
+    try {
+      await fetch('/api/logout', { method: 'POST' })
+    } catch {}
     router.push('/login')
   }
 
-  if (booting) return null
+  if (booting) return <div className="min-h-screen flex items-center justify-center text-sm italic text-gray-500">Verifying session...</div>
   if (!teacher) return null
 
   if (!teacher.assigned_class_id && !teacher.assigned_subjects && myClassIds.length === 0) {
@@ -396,7 +380,7 @@ export default function TeacherPortal() {
         <div className="bg-white border-b border-slate-200">
           <div className="max-w-6xl mx-auto px-4 sm:px-6">
             <div className="flex gap-1 overflow-x-auto">
-              <TabBtn id="attendance" current={activeTab} onClick={setActiveTab} label="Daily Attendance" />
+              <TabBtn id="attendance" current={activeTab} onClick={setActiveTab} label="Attendance" />
               <TabBtn id="scores" current={activeTab} onClick={setActiveTab} label="Score Entry" />
               {isClassTeacher && (
                 <TabBtn id="behavioural" current={activeTab} onClick={setActiveTab} label="Behavioural Ratings" />
@@ -414,7 +398,7 @@ export default function TeacherPortal() {
             ) : (
               <>
                 {activeTab === 'attendance' && (
-                  <AttendanceTab classes={scoreEntryClasses} showToast={showToast} />
+                  <AttendanceTab classes={scoreEntryClasses} currentTerm={currentTerm} currentSession={currentSession} showToast={showToast} />
                 )}
                 {activeTab === 'scores' && (
                   <ScoresTab
@@ -490,138 +474,37 @@ function TabBtn({
 }
 
 /* ============================================================================
-   TAB: NEWS
-   ============================================================================ */
-
-function NewsTab({
-  teacher, showToast,
-}: {
-  teacher: Teacher
-  showToast: (m: string, t?: Toast['tone']) => void
-}) {
-  const [announcements, setAnnouncements] = useState<Announcement[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      setLoading(true)
-      const { data, error } = await supabase
-        .from('announcements')
-        .select('*')
-        .in('audience', ['all', 'teachers'])
-        .order('pinned', { ascending: false })
-        .order('published_at', { ascending: false })
-
-      if (error) { showToast('Could not load news.', 'error'); setLoading(false); return }
-      if (cancelled) return
-
-      const now = Date.now()
-      const filtered = (data || []).filter((a: any) => {
-        if (a.expires_at && new Date(a.expires_at).getTime() < now) return false
-        return true
-      })
-      setAnnouncements(filtered as Announcement[])
-      setLoading(false)
-    })()
-    return () => { cancelled = true }
-  }, [teacher.id, showToast])
-
-  if (loading) return <div className="text-center py-20 text-sm text-gray-500 italic">Loading news…</div>
-
-  if (announcements.length === 0) {
-    return (
-      <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-12 text-center">
-        <p className="text-4xl mb-3">📭</p>
-        <h2 className="text-base font-bold text-[#4A2E1B]">No News Yet</h2>
-        <p className="text-xs text-gray-500 mt-2 max-w-md mx-auto">
-          There are no announcements for teachers right now. Check back later.
-        </p>
-      </div>
-    )
-  }
-
-  return (
-    <div className="space-y-3">
-      <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-5">
-        <h2 className="text-sm font-bold text-[#4A2E1B]">News &amp; Announcements</h2>
-        <p className="text-xs text-gray-500 mt-0.5">{announcements.length} item(s)</p>
-      </div>
-
-      {announcements.map((a) => (
-        <div key={a.id} className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-5">
-          <div className="flex items-start justify-between gap-3 mb-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              {a.pinned && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 ring-1 ring-amber-200">
-                  📌 Pinned
-                </span>
-              )}
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 ring-1 ring-blue-200 uppercase">
-                {a.audience === 'teachers' ? 'Teachers' : 'General'}
-              </span>
-            </div>
-            <p className="text-[10px] text-gray-400 whitespace-nowrap shrink-0">
-              {new Date(a.published_at).toLocaleDateString()}
-            </p>
-          </div>
-
-          <h3 className="text-sm font-bold text-[#4A2E1B]">{a.title}</h3>
-          <p className="text-xs text-gray-700 mt-2 whitespace-pre-wrap leading-relaxed">{a.body}</p>
-
-          {a.attachment_url && (
-            <a
-              href={a.attachment_url}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-2 mt-3 bg-pink-50 text-pink-700 ring-1 ring-pink-200 px-3.5 py-2 rounded-lg text-xs font-bold hover:bg-pink-100"
-            >
-              📎 {a.attachment_name || 'Download attachment'}
-            </a>
-          )}
-
-          {a.expires_at && (
-            <p className="text-[10px] text-gray-400 mt-2 italic">
-              Expires {new Date(a.expires_at).toLocaleDateString()}
-            </p>
-          )}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-/* ============================================================================
-   TAB: ATTENDANCE
+   TAB: ATTENDANCE (Daily & Term Summary)
    ============================================================================ */
 
 function AttendanceTab({
-  classes, showToast,
+  classes, currentTerm, currentSession, showToast,
 }: {
   classes: ClassRow[]
+  currentTerm: Term
+  currentSession: string
   showToast: (m: string, t?: Toast['tone']) => void
 }) {
   const [classId, setClassId] = useState('')
+  const [mode, setMode] = useState<'daily' | 'summary'>('daily')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+  
   const [students, setStudents] = useState<Student[]>([])
-  const [records, setRecords] = useState<Record<string, AttendanceStatus>>({})
+  const [dailyRecords, setDailyRecords] = useState<Record<string, AttendanceStatus>>({})
+  const [summaryRecords, setSummaryRecords] = useState<Record<string, { present: string; total: string }>>({})
+  
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
-  const [bulkPreview, setBulkPreview] = useState<{
-    valid: { student_id: string; admission_no: string; name: string; status: AttendanceStatus }[]
-    errors: string[]
-    unmatched: string[]
-  } | null>(null)
 
   useEffect(() => {
     if (!classId && classes.length === 1) setClassId(classes[0].id)
   }, [classes, classId])
 
   useEffect(() => {
-    if (!classId) { setStudents([]); setRecords({}); return }
+    if (!classId) { setStudents([]); setDailyRecords({}); setSummaryRecords({}); return }
     load()
-  }, [classId, date])
+  }, [classId, date, mode, currentTerm, currentSession])
 
   async function load() {
     setLoading(true)
@@ -633,143 +516,116 @@ function AttendanceTab({
     if (stErr) { showToast('Failed to load students.', 'error'); setLoading(false); return }
     setStudents((stds || []) as Student[])
 
-    const { data: atts } = await supabase
-      .from('attendance').select('*')
-      .eq('class_id', classId)
-      .eq('date', date)
+    if (mode === 'daily') {
+      const { data: atts } = await supabase
+        .from('attendance').select('*')
+        .eq('class_id', classId)
+        .eq('date', date)
 
-    const map: Record<string, AttendanceStatus> = {}
-    ;(stds || []).forEach((s: Student) => {
-      const found = atts?.find((a: any) => a.student_id === s.id)
-      map[s.id] = (found?.status as AttendanceStatus) || 'Present'
-    })
-    setRecords(map)
+      const map: Record<string, AttendanceStatus> = {}
+      ;(stds || []).forEach((s: Student) => {
+        const found = atts?.find((a: any) => a.student_id === s.id)
+        map[s.id] = (found?.status as AttendanceStatus) || 'Present'
+      })
+      setDailyRecords(map)
+    } else {
+      const { data: sums } = await supabase
+        .from('attendance_summary').select('*')
+        .eq('class_id', classId)
+        .eq('term', currentTerm)
+        .eq('session', currentSession)
+
+      const map: Record<string, { present: string; total: string }> = {}
+      ;(stds || []).forEach((s: Student) => {
+        const found = sums?.find((a: any) => a.student_id === s.id)
+        map[s.id] = {
+          present: found?.days_present?.toString() || '',
+          total: found?.total_days?.toString() || '120', // Default to 120 for convenience
+        }
+      })
+      setSummaryRecords(map)
+    }
     setLoading(false)
-  }
-
-  function setStatus(id: string, status: AttendanceStatus) {
-    setRecords((prev) => ({ ...prev, [id]: status }))
-  }
-
-  function markAll(status: AttendanceStatus) {
-    const next: Record<string, AttendanceStatus> = {}
-    students.forEach((s) => { next[s.id] = status })
-    setRecords(next)
   }
 
   async function saveAttendance() {
     if (!classId || students.length === 0) return
     setSaving(true)
-    const rows = students.map((s) => ({
-      student_id: s.id,
-      class_id: classId,
-      date,
-      status: records[s.id] || 'Present',
-    }))
-    const { error } = await supabase
-      .from('attendance')
-      .upsert(rows, { onConflict: 'student_id,date' })
-    setSaving(false)
-    if (error) { showToast(`Save failed: ${error.message}`, 'error'); return }
-    setLastSaved(new Date())
-    showToast(`Attendance saved for ${rows.length} students.`)
-  }
-
-  function downloadSample() {
-    if (students.length === 0) { showToast('Pick a class first.', 'warn'); return }
-    const cls = classes.find((c) => c.id === classId)?.name || 'Class'
-    const rows: any[][] = [
-      ['Admission No', 'Student Name', 'Status (Present/Absent/Late)'],
-      ...students.map((s) => [s.admission_number, s.full_name, records[s.id] || 'Present']),
-    ]
-    const ws = XLSX.utils.aoa_to_sheet(rows)
-    ws['!cols'] = [{ wch: 18 }, { wch: 28 }, { wch: 28 }]
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Attendance')
-    XLSX.writeFile(wb, `TTS_Attendance_${cls}_${date}.xlsx`.replace(/\s+/g, '_'))
-    showToast('Attendance sample downloaded.', 'info')
-  }
-
-  function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (!classId) { showToast('Pick a class first.', 'warn'); return }
-
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      try {
-        const data = new Uint8Array(ev.target?.result as ArrayBuffer)
-        const wb = XLSX.read(data, { type: 'array' })
-        const sheet = wb.Sheets[wb.SheetNames[0]]
-        const rows = XLSX.utils.sheet_to_json<any>(sheet, { header: 1, defval: '' })
-        if (rows.length < 2) { showToast('File is empty.', 'error'); return }
-
-        const header = (rows[0] as string[]).map(normalizeHeader)
-        const idx = (name: string) => header.indexOf(name)
-        const iAdm = idx('admission_no')
-        const iName = idx('student_name')
-        let iStatus = idx('status')
-        if (iStatus === -1) iStatus = idx('status_(present/absent/late)')
-
-        const byAdm = new Map<string, Student>()
-        const byName = new Map<string, Student>()
-        students.forEach((s) => {
-          if (s.admission_number) byAdm.set(s.admission_number.toLowerCase(), s)
-          byName.set(s.full_name.toLowerCase(), s)
-        })
-
-        const valid: { student_id: string; admission_no: string; name: string; status: AttendanceStatus }[] = []
-        const errors: string[] = []
-        const unmatched: string[] = []
-
-        rows.slice(1).forEach((r, i) => {
-          const rowNum = i + 2
-          const adm = String(r[iAdm] ?? '').trim()
-          const name = String(r[iName] ?? '').trim()
-          const statusRaw = String(r[iStatus] ?? '').trim().toLowerCase()
-          if (!adm && !name) return
-
-          const status = (statusRaw === 'present' || statusRaw === 'absent' || statusRaw === 'late')
-            ? (statusRaw.charAt(0).toUpperCase() + statusRaw.slice(1)) as AttendanceStatus
-            : null
-
-          if (!status) { errors.push(`Row ${rowNum}: Status must be Present, Absent, or Late`); return }
-
-          const student = (adm && byAdm.get(adm.toLowerCase())) || (name && byName.get(name.toLowerCase()))
-          if (!student) { unmatched.push(adm || name); return }
-
-          valid.push({ student_id: student.id, admission_no: student.admission_number, name: student.full_name, status })
-        })
-
-        setBulkPreview({ valid, errors, unmatched })
-      } catch { showToast('Could not read the Excel file.', 'error') }
+    
+    if (mode === 'daily') {
+      const rows = students.map((s) => ({
+        student_id: s.id,
+        class_id: classId,
+        date,
+        status: dailyRecords[s.id] || 'Present',
+      }))
+      const { error } = await supabase.from('attendance').upsert(rows, { onConflict: 'student_id,date' })
+      setSaving(false)
+      if (error) { showToast(`Save failed: ${error.message}`, 'error'); return }
+    } else {
+      const rows = students.map((s) => {
+        const rec = summaryRecords[s.id] || { present: '', total: '120' }
+        return {
+          student_id: s.id,
+          class_id: classId,
+          term: currentTerm,
+          session: currentSession,
+          days_present: rec.present ? Number(rec.present) : 0,
+          total_days: rec.total ? Number(rec.total) : 120,
+        }
+      })
+      const { error } = await supabase.from('attendance_summary').upsert(rows, { onConflict: 'student_id,term,session' })
+      setSaving(false)
+      if (error) { showToast(`Save failed: ${error.message}`, 'error'); return }
     }
-    reader.readAsArrayBuffer(file)
-    e.target.value = ''
+    
+    setLastSaved(new Date())
+    showToast(`Attendance saved for ${students.length} students.`)
   }
 
-  function applyBulk() {
-    if (!bulkPreview) return
-    const next = { ...records }
-    bulkPreview.valid.forEach((v) => { next[v.student_id] = v.status })
-    setRecords(next)
-    showToast(`Applied ${bulkPreview.valid.length} record(s).`)
-    setBulkPreview(null)
+  function setStatus(id: string, status: AttendanceStatus) {
+    setDailyRecords((prev) => ({ ...prev, [id]: status }))
+  }
+
+  function markAll(status: AttendanceStatus) {
+    const next: Record<string, AttendanceStatus> = {}
+    students.forEach((s) => { next[s.id] = status })
+    setDailyRecords(next)
+  }
+
+  function setSummaryValue(id: string, field: 'present' | 'total', value: string) {
+    setSummaryRecords((prev) => ({
+      ...prev,
+      [id]: { ...(prev[id] || { present: '', total: '120' }), [field]: value }
+    }))
+  }
+
+  function fillTotalDays() {
+    const next: Record<string, { present: string; total: string }> = {}
+    students.forEach((s) => {
+      const current = summaryRecords[s.id] || { present: '', total: '120' }
+      next[s.id] = { ...current, total: '120' } // Fill total with 120
+    })
+    setSummaryRecords(next)
+    showToast('Filled total days with 120', 'info')
   }
 
   const stats = useMemo(() => {
-    const s = { Present: 0, Absent: 0, Late: 0 }
-    students.forEach((st) => {
-      const v = records[st.id] || 'Present'
-      s[v]++
-    })
-    return s
-  }, [students, records])
+    if (mode === 'daily') {
+      const s = { Present: 0, Absent: 0, Late: 0 }
+      students.forEach((st) => {
+        const v = dailyRecords[st.id] || 'Present'
+        s[v]++
+      })
+      return s
+    }
+    return { Present: 0, Absent: 0, Late: 0 }
+  }, [students, dailyRecords, mode])
 
   return (
     <div className="space-y-5">
       <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-5">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
           <div>
             <label className="block text-xs font-bold text-[#4A2E1B] mb-1">Class</label>
             <select value={classId} onChange={(e) => setClassId(e.target.value)} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none">
@@ -777,55 +633,67 @@ function AttendanceTab({
               {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
+          
           <div>
-            <label className="block text-xs font-bold text-[#4A2E1B] mb-1">Date</label>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+            <label className="block text-xs font-bold text-[#4A2E1B] mb-1">Mode</label>
+            <div className="flex bg-slate-100 p-1 rounded-xl">
+              <button
+                onClick={() => setMode('daily')}
+                className={`flex-1 text-xs font-bold py-1.5 rounded-lg transition ${mode === 'daily' ? 'bg-white shadow text-[#4A2E1B]' : 'text-gray-500'}`}
+              >
+                Daily
+              </button>
+              <button
+                onClick={() => setMode('summary')}
+                className={`flex-1 text-xs font-bold py-1.5 rounded-lg transition ${mode === 'summary' ? 'bg-white shadow text-[#4A2E1B]' : 'text-gray-500'}`}
+              >
+                Term Summary
+              </button>
+            </div>
           </div>
-          <div className="flex items-end gap-2">
-            <button onClick={downloadSample} className="text-xs font-bold bg-[#4A2E1B] text-white px-3.5 py-2.5 rounded-xl hover:bg-black">📥 Sample</button>
-            <label className="text-xs font-bold bg-pink-600 text-white px-3.5 py-2.5 rounded-xl hover:bg-pink-700 cursor-pointer">
-              📤 Upload
-              <input type="file" accept=".xlsx,.xls" onChange={handleUpload} className="hidden" />
-            </label>
+
+          {mode === 'daily' ? (
+            <div>
+              <label className="block text-xs font-bold text-[#4A2E1B] mb-1">Date</label>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full text-sm px-3 py-2.5 bg-white border border-pink-200 rounded-xl outline-none" />
+            </div>
+          ) : (
+            <div className="flex items-end pb-1.5 text-sm text-gray-600 font-semibold">
+              {currentTerm} · {currentSession}
+            </div>
+          )}
+
+          <div className="flex items-end">
+            {mode === 'summary' && (
+              <button onClick={fillTotalDays} className="text-xs font-bold bg-slate-100 text-gray-700 px-3 py-2.5 rounded-xl hover:bg-slate-200">
+                Fill 120 Days
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      {bulkPreview && (
-        <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-5 space-y-3">
-          <div className="flex flex-wrap gap-2 text-xs">
-            <span className="px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 font-semibold">{bulkPreview.valid.length} ready</span>
-            {bulkPreview.errors.length > 0 && <span className="px-3 py-1.5 rounded-full bg-red-50 text-red-700 ring-1 ring-red-200 font-semibold">{bulkPreview.errors.length} error(s)</span>}
-            {bulkPreview.unmatched.length > 0 && <span className="px-3 py-1.5 rounded-full bg-amber-50 text-amber-700 ring-1 ring-amber-200 font-semibold">{bulkPreview.unmatched.length} not matched</span>}
-          </div>
-          {bulkPreview.errors.length > 0 && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700 space-y-1">
-              {bulkPreview.errors.slice(0, 5).map((e, i) => <div key={i}>• {e}</div>)}
-            </div>
-          )}
-          {bulkPreview.unmatched.length > 0 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
-              Not in this class: {bulkPreview.unmatched.slice(0, 10).join(', ')}
-            </div>
-          )}
-          <div className="flex justify-end gap-2">
-            <button onClick={() => setBulkPreview(null)} className="text-xs font-bold px-4 py-2 rounded-lg text-gray-700 hover:bg-red-50">Cancel</button>
-            <button onClick={applyBulk} disabled={bulkPreview.valid.length === 0} className="text-xs font-bold px-4 py-2 rounded-lg bg-pink-600 text-white hover:bg-pink-700 disabled:opacity-50">Apply to Table</button>
-          </div>
-        </div>
-      )}
-
       {classId && (
         <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap gap-2 text-xs font-semibold">
-              <span className="px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">Present: {stats.Present}</span>
-              <span className="px-3 py-1.5 rounded-full bg-red-50 text-red-700 ring-1 ring-red-200">Absent: {stats.Absent}</span>
-              <span className="px-3 py-1.5 rounded-full bg-amber-50 text-amber-700 ring-1 ring-amber-200">Late: {stats.Late}</span>
-            </div>
+            {mode === 'daily' ? (
+              <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                <span className="px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">Present: {stats.Present}</span>
+                <span className="px-3 py-1.5 rounded-full bg-red-50 text-red-700 ring-1 ring-red-200">Absent: {stats.Absent}</span>
+                <span className="px-3 py-1.5 rounded-full bg-amber-50 text-amber-700 ring-1 ring-amber-200">Late: {stats.Late}</span>
+              </div>
+            ) : (
+              <div className="text-xs font-semibold text-gray-600">
+                Enter total days present and total days the school was open.
+              </div>
+            )}
             <div className="flex gap-2">
-              <button onClick={() => markAll('Present')} className="text-xs font-bold bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-200">All Present</button>
-              <button onClick={() => markAll('Absent')} className="text-xs font-bold bg-red-100 text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-200">All Absent</button>
+              {mode === 'daily' && (
+                <>
+                  <button onClick={() => markAll('Present')} className="text-xs font-bold bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-200">All Present</button>
+                  <button onClick={() => markAll('Absent')} className="text-xs font-bold bg-red-100 text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-200">All Absent</button>
+                </>
+              )}
             </div>
           </div>
 
@@ -841,38 +709,79 @@ function AttendanceTab({
                     <th className="px-3 py-3 w-14">Photo</th>
                     <th className="px-4 py-3 font-semibold">Adm No</th>
                     <th className="px-4 py-3 font-semibold">Student Name</th>
-                    <th className="px-4 py-3 font-semibold text-center">Status</th>
+                    {mode === 'daily' ? (
+                      <th className="px-4 py-3 font-semibold text-center">Status</th>
+                    ) : (
+                      <>
+                        <th className="px-4 py-3 font-semibold text-center w-32">Days Present</th>
+                        <th className="px-4 py-3 font-semibold text-center w-32">Total Days</th>
+                        <th className="px-4 py-3 font-semibold text-center w-20">%</th>
+                      </>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {students.map((s) => {
-                    const current = records[s.id] || 'Present'
-                    return (
-                      <tr key={s.id} className="hover:bg-pink-50/50">
-                        <td className="px-3 py-2"><StudentAvatar student={s} /></td>
-                        <td className="px-4 py-3 font-mono text-pink-700">{s.admission_number}</td>
-                        <td className="px-4 py-3 font-medium text-[#4A2E1B]">{s.full_name}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex justify-center gap-1.5">
-                            {(['Present', 'Absent', 'Late'] as AttendanceStatus[]).map((st) => (
-                              <button
-                                key={st}
-                                onClick={() => setStatus(s.id, st)}
-                                className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition ${
-                                  current === st
-                                    ? st === 'Present' ? 'bg-emerald-600 text-white'
-                                    : st === 'Absent' ? 'bg-red-600 text-white'
-                                    : 'bg-amber-500 text-white'
-                                    : 'bg-slate-100 text-gray-600 hover:bg-slate-200'
-                                }`}
-                              >
-                                {st}
-                              </button>
-                            ))}
-                          </div>
-                        </td>
-                      </tr>
-                    )
+                    if (mode === 'daily') {
+                      const current = dailyRecords[s.id] || 'Present'
+                      return (
+                        <tr key={s.id} className="hover:bg-pink-50/50">
+                          <td className="px-3 py-2"><StudentAvatar student={s} /></td>
+                          <td className="px-4 py-3 font-mono text-pink-700">{s.admission_number}</td>
+                          <td className="px-4 py-3 font-medium text-[#4A2E1B]">{s.full_name}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex justify-center gap-1.5">
+                              {(['Present', 'Absent', 'Late'] as AttendanceStatus[]).map((st) => (
+                                <button
+                                  key={st}
+                                  onClick={() => setStatus(s.id, st)}
+                                  className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition ${
+                                    current === st
+                                      ? st === 'Present' ? 'bg-emerald-600 text-white'
+                                      : st === 'Absent' ? 'bg-red-600 text-white'
+                                      : 'bg-amber-500 text-white'
+                                      : 'bg-slate-100 text-gray-600 hover:bg-slate-200'
+                                  }`}
+                                >
+                                  {st}
+                                </button>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    } else {
+                      const rec = summaryRecords[s.id] || { present: '', total: '120' }
+                      const pct = (rec.present && rec.total) ? Math.round((Number(rec.present) / Number(rec.total)) * 100) : 0
+                      return (
+                        <tr key={s.id} className="hover:bg-pink-50/50">
+                          <td className="px-3 py-2"><StudentAvatar student={s} /></td>
+                          <td className="px-4 py-3 font-mono text-pink-700">{s.admission_number}</td>
+                          <td className="px-4 py-3 font-medium text-[#4A2E1B]">{s.full_name}</td>
+                          <td className="px-4 py-3 text-center">
+                            <input
+                              type="number"
+                              value={rec.present}
+                              onChange={(e) => setSummaryValue(s.id, 'present', e.target.value)}
+                              className="w-20 border border-pink-200 rounded-lg p-2 text-center text-sm outline-none"
+                              placeholder="e.g. 115"
+                            />
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <input
+                              type="number"
+                              value={rec.total}
+                              onChange={(e) => setSummaryValue(s.id, 'total', e.target.value)}
+                              className="w-20 border border-pink-200 rounded-lg p-2 text-center text-sm outline-none"
+                              placeholder="e.g. 120"
+                            />
+                          </td>
+                          <td className="px-4 py-3 text-center font-bold text-[#4A2E1B]">
+                            {pct}%
+                          </td>
+                        </tr>
+                      )
+                    }
                   })}
                 </tbody>
               </table>
@@ -898,7 +807,7 @@ function AttendanceTab({
 }
 
 /* ============================================================================
-   TAB: SCORES (Edit mode + Clear + Lock awareness)
+   TAB: SCORES
    ============================================================================ */
 
 function ScoresTab({
@@ -1384,7 +1293,7 @@ function ScoresTab({
 }
 
 /* ============================================================================
-   TAB: BEHAVIOURAL RATINGS (class teachers only — enforced at parent level)
+   TAB: BEHAVIOURAL RATINGS
    ============================================================================ */
 
 function BehaviouralTab({
@@ -1622,7 +1531,7 @@ function BehaviouralTab({
 }
 
 /* ============================================================================
-   TAB: CBT RESULTS (READ-ONLY)
+   TAB: CBT RESULTS (With Excel Download)
    ============================================================================ */
 
 function CbtResultsTab({
@@ -1680,6 +1589,37 @@ function CbtResultsTab({
     setAttempts((prev) => ({ ...prev, [examId]: (data || []) as Attempt[] }))
   }
 
+  function downloadExcel(exam: CbtExam, examAttempts: Attempt[]) {
+    if (!examAttempts || examAttempts.length === 0) {
+      showToast('No submissions to download yet.', 'warn')
+      return
+    }
+
+    const rows = examAttempts.map((a) => {
+      const s = studentById[a.student_id]
+      const pct = a.total_marks ? Math.round(((a.score || 0) / a.total_marks) * 100) : 0
+      return {
+        'Admission No': s?.admission_number || '—',
+        'Student Name': s?.full_name || '—',
+        'Status': a.status.replace(/_/g, ' ').toUpperCase(),
+        'Score': a.score ?? '—',
+        'Total Marks': a.total_marks ?? '—',
+        'Percentage': `${pct}%`,
+        'Time Spent (mins)': a.duration_spent_seconds ? (a.duration_spent_seconds / 60).toFixed(1) : '—',
+        'Tab Switches': a.tab_switch_count,
+        'Submitted At': a.submitted_at ? new Date(a.submitted_at).toLocaleString() : '—'
+      }
+    })
+
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'CBT Results')
+    
+    const safeTitle = exam.title.replace(/[^A-Za-z0-9]/g, '_')
+    XLSX.writeFile(wb, `CBT_Results_${safeTitle}_${new Date().toISOString().split('T')[0]}.xlsx`)
+    showToast('Excel file downloaded.', 'info')
+  }
+
   const studentById = useMemo(() => Object.fromEntries(students.map((s) => [s.id, s])), [students])
 
   return (
@@ -1696,7 +1636,7 @@ function CbtResultsTab({
           <div className="flex items-end">
             <p className="text-[11px] text-gray-500">
               Only <strong>published</strong> exams for <strong>your subjects</strong> appear here.<br />
-              Questions and exam editing are managed by the admin.
+              You can download results immediately before the admin unpublishes the exam.
             </p>
           </div>
         </div>
@@ -1719,23 +1659,32 @@ function CbtResultsTab({
                   : 0
                 return (
                   <div key={ex.id}>
-                    <button
-                      onClick={() => toggleExam(ex.id)}
-                      className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left hover:bg-pink-50/40"
-                    >
-                      <div className="min-w-0">
+                    <div className="w-full flex items-center justify-between gap-3 px-5 py-4 hover:bg-pink-50/40">
+                      <button onClick={() => toggleExam(ex.id)} className="flex-1 text-left min-w-0">
                         <p className="font-bold text-sm text-[#4A2E1B] truncate">{ex.title}</p>
                         <p className="text-[10px] text-gray-500">
                           {ex.duration_minutes} min · {ex.session} · {ex.term}
                           {ex.has_theory && <span className="ml-2 text-purple-700 font-bold">· Theory</span>}
                         </p>
-                      </div>
+                      </button>
                       <div className="flex items-center gap-3 shrink-0">
                         <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">{submitted} submitted</span>
                         {submitted > 0 && <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-pink-50 text-pink-700 ring-1 ring-pink-200">Avg {avg}</span>}
-                        <span className="text-xs text-gray-500">{open ? '▲' : '▼'}</span>
+                        
+                        {submitted > 0 && (
+                          <button 
+                            onClick={() => downloadExcel(ex, list)} 
+                            className="ml-2 text-[10px] font-bold bg-[#4A2E1B] text-white px-3 py-1.5 rounded-lg hover:bg-black transition"
+                          >
+                            📥 Download Excel
+                          </button>
+                        )}
+
+                        <button onClick={() => toggleExam(ex.id)} className="text-xs text-gray-500 ml-2">
+                          {open ? '▲' : '▼'}
+                        </button>
                       </div>
-                    </button>
+                    </div>
 
                     {open && (
                       <div className="bg-slate-50 px-5 pb-5">
@@ -1794,6 +1743,108 @@ function CbtResultsTab({
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+/* ============================================================================
+   TAB: NEWS
+   ============================================================================ */
+
+function NewsTab({
+  teacher, showToast,
+}: {
+  teacher: Teacher
+  showToast: (m: string, t?: Toast['tone']) => void
+}) {
+  const [announcements, setAnnouncements] = useState<Announcement[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      setLoading(true)
+      const { data, error } = await supabase
+        .from('announcements')
+        .select('*')
+        .in('audience', ['all', 'teachers'])
+        .order('pinned', { ascending: false })
+        .order('published_at', { ascending: false })
+
+      if (error) { showToast('Could not load news.', 'error'); setLoading(false); return }
+      if (cancelled) return
+
+      const now = Date.now()
+      const filtered = (data || []).filter((a: any) => {
+        if (a.expires_at && new Date(a.expires_at).getTime() < now) return false
+        return true
+      })
+      setAnnouncements(filtered as Announcement[])
+      setLoading(false)
+    })()
+    return () => { cancelled = true }
+  }, [teacher.id, showToast])
+
+  if (loading) return <div className="text-center py-20 text-sm text-gray-500 italic">Loading news…</div>
+
+  if (announcements.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-12 text-center">
+        <p className="text-4xl mb-3">📭</p>
+        <h2 className="text-base font-bold text-[#4A2E1B]">No News Yet</h2>
+        <p className="text-xs text-gray-500 mt-2 max-w-md mx-auto">
+          There are no announcements for teachers right now. Check back later.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-5">
+        <h2 className="text-sm font-bold text-[#4A2E1B]">News &amp; Announcements</h2>
+        <p className="text-xs text-gray-500 mt-0.5">{announcements.length} item(s)</p>
+      </div>
+
+      {announcements.map((a) => (
+        <div key={a.id} className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-5">
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {a.pinned && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 ring-1 ring-amber-200">
+                  📌 Pinned
+                </span>
+              )}
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 ring-1 ring-blue-200 uppercase">
+                {a.audience === 'teachers' ? 'Teachers' : 'General'}
+              </span>
+            </div>
+            <p className="text-[10px] text-gray-400 whitespace-nowrap shrink-0">
+              {new Date(a.published_at).toLocaleDateString()}
+            </p>
+          </div>
+
+          <h3 className="text-sm font-bold text-[#4A2E1B]">{a.title}</h3>
+          <p className="text-xs text-gray-700 mt-2 whitespace-pre-wrap leading-relaxed">{a.body}</p>
+
+          {a.attachment_url && (
+            <a
+              href={a.attachment_url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 mt-3 bg-pink-50 text-pink-700 ring-1 ring-pink-200 px-3.5 py-2 rounded-lg text-xs font-bold hover:bg-pink-100"
+            >
+              📎 {a.attachment_name || 'Download attachment'}
+            </a>
+          )}
+
+          {a.expires_at && (
+            <p className="text-[10px] text-gray-400 mt-2 italic">
+              Expires {new Date(a.expires_at).toLocaleDateString()}
+            </p>
+          )}
+        </div>
+      ))}
     </div>
   )
 }
