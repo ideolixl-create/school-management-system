@@ -146,6 +146,23 @@ function ageFromDob(dob: string | null | undefined): number | null {
 }
 
 /* ============================================================================
+   PRINCIPAL'S REMARK GENERATOR
+   ============================================================================ */
+
+function getPrincipalRemark(avgPercentage: number): string {
+  if (avgPercentage >= 70) {
+    // Excellent / Outstanding (A / A+)
+    return '"An excellent result; keep soaring high and do not relent in your efforts next term."'
+  } else if (avgPercentage >= 50) {
+    // Good / Above Average (B / C)
+    return '"A good result. With more focus and consistency, you have the potential to achieve even higher."'
+  } else {
+    // Struggling / Below Average (D / F)
+    return '"This result falls below your capability. More commitment, regular revision, and class participation are required next term."'
+  }
+}
+
+/* ============================================================================
    DATA LOADER
    ============================================================================ */
 
@@ -250,6 +267,7 @@ export default function ReportCard({ data }: { data: ReportCardData }) {
   const avg = rows.length > 0 ? (sum / (rows.length * 100)) * 100 : 0
   const avgStr = avg.toFixed(2)
 
+  // Attendance
   const attDisplay = (() => {
     if (data.attendanceSummary) {
       const { days_present, total_days } = data.attendanceSummary
@@ -264,6 +282,8 @@ export default function ReportCard({ data }: { data: ReportCardData }) {
     return `${present + late} / ${rows.length} (${pct}%)`
   })()
 
+  const principalRemark = getPrincipalRemark(avg)
+
   return (
     <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-6 sm:p-8 print:shadow-none print:ring-0 print:rounded-none report-card-root">
       <style dangerouslySetInnerHTML={{ __html: `
@@ -277,27 +297,47 @@ export default function ReportCard({ data }: { data: ReportCardData }) {
         .signature-img, .stamp-img { mix-blend-mode: multiply; }
       `}} />
 
-      {/* HEADER */}
-      <div className="relative pb-4 border-b-2 border-[#4A2E1B]">
-        <div className="absolute top-0 right-0 z-10">
-          <div className="relative">
-            {student.passport_url ? (
-              <img src={student.passport_url} alt={student.full_name} className="w-20 h-24 sm:w-24 sm:h-28 rounded-md object-cover ring-2 ring-[#4A2E1B]/30 bg-slate-100 shadow-sm" onError={(e) => { const img = e.currentTarget as HTMLImageElement; img.style.display = 'none'; const fb = img.nextElementSibling as HTMLElement | null; if (fb) fb.style.display = 'flex'; }} />
-            ) : null}
-            {!student.passport_url && (
-              <div className="w-20 h-24 sm:w-24 sm:h-28 rounded-md ring-2 ring-[#4A2E1B]/30 bg-slate-50 flex flex-col items-center justify-center text-gray-400 text-[9px] font-bold text-center px-1">
-                <span className="text-lg mb-1">👤</span>PASSPORT
-              </div>
-            )}
-          </div>
+      {/* 3-COLUMN HEADER */}
+      <div className="flex items-center justify-between gap-4 pb-4 border-b-2 border-[#4A2E1B]">
+        {/* Left: Big Logo */}
+        <div className="shrink-0">
+          <img src={SCHOOL.logo} alt="Logo" className="w-20 h-20 sm:w-24 sm:h-24 object-contain" />
         </div>
 
-        <div className="text-center px-24 sm:px-28">
-          <img src={SCHOOL.logo} alt="Logo" className="w-16 h-16 mx-auto mb-2" />
-          <h1 className="text-lg sm:text-xl font-black text-[#4A2E1B] tracking-tight">{SCHOOL.name.toUpperCase()}</h1>
-          <p className="text-xs italic mt-0.5">Motto: {SCHOOL.motto}</p>
-          <p className="text-[11px] text-gray-600 mt-0.5">{SCHOOL.address}</p>
-          <p className="text-[11px] text-gray-600">{SCHOOL.phones.join(' · ')} · {SCHOOL.email}</p>
+        {/* Center: School Info */}
+        <div className="text-center flex-1">
+          <h1 className="text-xl sm:text-2xl font-black text-[#4A2E1B] tracking-tight uppercase leading-tight mb-1">
+            {SCHOOL.name}
+          </h1>
+          <p className="text-xs sm:text-sm font-bold text-gray-800 mb-1">
+            {SCHOOL.address}
+          </p>
+          <p className="text-[11px] sm:text-xs font-bold text-gray-700">
+            {SCHOOL.phones.join(' · ')}<br />
+            {SCHOOL.email} · {SCHOOL.website}
+          </p>
+        </div>
+
+        {/* Right: Passport */}
+        <div className="shrink-0">
+          {student.passport_url ? (
+            <img
+              src={student.passport_url}
+              alt={student.full_name}
+              className="w-20 h-24 sm:w-24 sm:h-28 rounded-md object-cover ring-2 ring-[#4A2E1B]/30 bg-slate-100 shadow-sm"
+              onError={(e) => {
+                const img = e.currentTarget as HTMLImageElement
+                img.style.display = 'none'
+                const fb = img.nextElementSibling as HTMLElement | null
+                if (fb) fb.style.display = 'flex'
+              }}
+            />
+          ) : null}
+          {!student.passport_url && (
+            <div className="w-20 h-24 sm:w-24 sm:h-28 rounded-md ring-2 ring-[#4A2E1B]/30 bg-slate-50 flex flex-col items-center justify-center text-gray-400 text-[9px] font-bold text-center px-1">
+              <span className="text-lg mb-1">👤</span>PASSPORT
+            </div>
+          )}
         </div>
       </div>
 
@@ -316,7 +356,7 @@ export default function ReportCard({ data }: { data: ReportCardData }) {
         <InfoRow label="Attendance" value={attDisplay} />
       </div>
 
-      {/* SUBJECTS */}
+      {/* SUBJECTS TABLE */}
       <div className="mt-4 overflow-x-auto">
         <table className="w-full text-left text-xs border border-slate-300">
           <thead className="bg-[#4A2E1B] text-white">
@@ -409,18 +449,29 @@ export default function ReportCard({ data }: { data: ReportCardData }) {
         </div>
       )}
 
-      {/* TEACHER'S COMMENT */}
-      {behavioural?.teacher_comment && (
-        <div className="mt-5">
-          <h3 className="text-xs font-black uppercase tracking-wider text-[#4A2E1B] mb-2 border-b border-slate-200 pb-1">Class Teacher's Comment</h3>
-          <p className="text-xs italic text-gray-700 bg-slate-50 border border-slate-200 rounded-lg p-3">"{behavioural.teacher_comment}"</p>
+      {/* TEACHER & PRINCIPAL COMMENTS */}
+      <div className="mt-5 space-y-3">
+        {behavioural?.teacher_comment && (
+          <div>
+            <h3 className="text-xs font-black uppercase tracking-wider text-[#4A2E1B] mb-1 border-b border-slate-200 pb-1">Class Teacher's Comment</h3>
+            <p className="text-xs italic text-gray-700 bg-slate-50 border border-slate-200 rounded-lg p-3">
+              "{behavioural.teacher_comment}"
+            </p>
+          </div>
+        )}
+        
+        <div>
+          <h3 className="text-xs font-black uppercase tracking-wider text-[#4A2E1B] mb-1 border-b border-slate-200 pb-1">Principal's Remark</h3>
+          <p className="text-xs italic text-gray-700 bg-slate-50 border border-slate-200 rounded-lg p-3">
+            {principalRemark}
+          </p>
         </div>
-      )}
+      </div>
 
-      {/* FOOTER — Name on left, Stamp with Signature inside on right */}
+      {/* FOOTER */}
       <div className="mt-10 pt-6 border-t-2 border-dashed border-slate-300 flex items-end justify-between px-4 sm:px-12">
         
-        {/* Left Side: Name then Title */}
+        {/* Left Side: Proprietor Name */}
         <div className="text-center w-56 pb-2">
           <p className="text-sm font-black text-gray-900 border-b border-black pb-1 mb-1">{PROPRIETOR_NAME}</p>
           <p className="text-xs font-bold text-[#4A2E1B] uppercase tracking-wider">Proprietress</p>
@@ -428,14 +479,12 @@ export default function ReportCard({ data }: { data: ReportCardData }) {
 
         {/* Right Side: Stamp with Signature inside */}
         <div className="relative w-36 h-36 flex items-center justify-center">
-          {/* The Stamp (Background) */}
           <img
             src={SCHOOL_STAMP_URL}
             alt="School Stamp"
             className="stamp-img absolute inset-0 w-full h-full object-contain"
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
           />
-          {/* The Signature (Foreground) */}
           <img
             src={PROPRIETOR_SIGNATURE_URL}
             alt="Proprietor's Signature"
