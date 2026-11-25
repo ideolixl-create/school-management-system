@@ -1920,7 +1920,7 @@ function QuestionsTab({
       </div>
       <div className="p-5 space-y-3 max-h-[700px] overflow-y-auto">
         {questions.length === 0 && <div className="text-center py-12 text-xs text-gray-500 italic">No questions yet. Add them from the Exams tab.</div>}
-        {questions.slice(0, 200).map((q) => {
+        {questions.map((q) => {
           const ex = examById[q.exam_id]
           return (
             <div key={q.id} className="p-4 rounded-xl ring-1 ring-slate-200 bg-white">

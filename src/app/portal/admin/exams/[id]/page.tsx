@@ -4,6 +4,8 @@
    ADMIN — EXAM DETAIL
    Route: /portal/admin/exams/[id]
    Handles: setup, publish, question upload, delete question
+
+   v2 — Sanitized payload + chunked insert (fixes theory-question upload bug)
    ============================================================================ */
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
@@ -16,6 +18,7 @@ import * as XLSX from 'xlsx'
    ============================================================================ */
 
 const SESSION_KEY = 'tts.admin.session'
+const INSERT_BATCH_SIZE = 200   // ← chunk size for cbt_questions inserts
 
 /* ============================================================================
    TYPES
@@ -87,6 +90,73 @@ function fromLocalDatetimeInput(v: string): string | null {
   const d = new Date(v)
   if (isNaN(d.getTime())) return null
   return d.toISOString()
+}
+
+/* ============================================================================
+   QUESTION PAYLOAD SANITIZER
+   Prevents one bad Excel cell from killing a whole upload batch.
+   ============================================================================ */
+
+type SanitizedQuestion = {
+  exam_id: string
+  question_text: string
+  option_a: string | null
+  option_b: string | null
+  option_c: string | null
+  option_d: string | null
+  correct_answer: 'A' | 'B' | 'C' | 'D' | null
+  marks: number
+  type: 'objective' | 'theory'
+  theory_answer_guide: string | null
+}
+
+type RawParsedRow = {
+  type: 'objective' | 'theory'
+  question_text: string
+  option_a: string
+  option_b: string
+  option_c: string
+  option_d: string
+  correct_answer: string
+  marks: number
+  theory_answer_guide: string | null
+}
+
+function sanitizeQuestionRow(raw: RawParsedRow, examId: string): SanitizedQuestion {
+  const type: 'objective' | 'theory' = raw.type === 'theory' ? 'theory' : 'objective'
+
+  // Marks: force integer, default 1, clamp 1..100
+  let marks = 1
+  const n = Number(raw.marks)
+  if (Number.isFinite(n)) marks = Math.min(100, Math.max(1, Math.round(n)))
+
+  // Correct answer: A/B/C/D for objective only; always NULL for theory
+  let correct_answer: 'A' | 'B' | 'C' | 'D' | null = null
+  if (type === 'objective') {
+    const ca = String(raw.correct_answer ?? '').trim().toUpperCase()
+    if (ca === 'A' || ca === 'B' || ca === 'C' || ca === 'D') correct_answer = ca
+  }
+
+  const opt = (v: string): string | null => {
+    const s = String(v ?? '').trim()
+    return s === '' ? null : s
+  }
+
+  return {
+    exam_id: examId,
+    question_text: String(raw.question_text ?? '').trim(),
+    option_a: type === 'objective' ? opt(raw.option_a) : null,
+    option_b: type === 'objective' ? opt(raw.option_b) : null,
+    option_c: type === 'objective' ? opt(raw.option_c) : null,
+    option_d: type === 'objective' ? opt(raw.option_d) : null,
+    correct_answer,
+    marks,
+    type,
+    theory_answer_guide:
+      type === 'theory' && raw.theory_answer_guide != null
+        ? String(raw.theory_answer_guide).trim() || null
+        : null,
+  }
 }
 
 /* ============================================================================
@@ -277,7 +347,6 @@ function ExamDetail({ examId, onBack }: { examId: string; onBack: () => void }) 
       'Delete Exam?',
       `Are you sure you want to permanently delete "${exam.title}" and all its questions?\n\nWARNING: If students have already taken this exam, deletion will be blocked to protect their scores. If you just want to hide it, click "Cancel" and Unpublish it instead.`,
       async () => {
-        // Check for attempts first
         const { count, error: countErr } = await supabase
           .from('cbt_attempts')
           .select('*', { count: 'exact', head: true })
@@ -668,7 +737,7 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
 }
 
 /* ============================================================================
-   TAB: QUESTIONS
+   TAB: QUESTIONS  (FIXED — sanitizer + chunked insert)
    ============================================================================ */
 
 function QuestionsTab({
@@ -702,20 +771,6 @@ function QuestionsTab({
     showToast('Sample downloaded.', 'info')
   }
 
-  function parseCSVLine(line: string): string[] {
-    const out: string[] = []
-    let cur = ''
-    let inQuotes = false
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i]
-      if (ch === '"') { inQuotes = !inQuotes; continue }
-      if (ch === ',' && !inQuotes) { out.push(cur); cur = ''; continue }
-      cur += ch
-    }
-    out.push(cur)
-    return out.map((x) => x.trim())
-  }
-
   function processRows(rows: any[][]) {
     const parsed: any[] = []
     const errors: string[] = []
@@ -738,7 +793,7 @@ function QuestionsTab({
     rows.slice(1).forEach((r, i) => {
       const rowNum = i + 2
       const typeRaw = String(iType !== -1 ? r[iType] : 'objective').trim().toLowerCase()
-      const type = typeRaw === 'theory' ? 'theory' : 'objective'
+      const type: 'objective' | 'theory' = typeRaw === 'theory' ? 'theory' : 'objective'
       const question = String(r[iQ] ?? '').trim()
       const a = iA !== -1 ? String(r[iA] ?? '').trim() : ''
       const b = iB !== -1 ? String(r[iB] ?? '').trim() : ''
@@ -767,7 +822,7 @@ function QuestionsTab({
         option_b: b,
         option_c: c,
         option_d: d,
-        correct_answer: type === 'objective' ? correct : null,
+        correct_answer: type === 'objective' ? correct : '',
         marks: isNaN(marksNum) ? 1 : marksNum,
         theory_answer_guide: type === 'theory' ? (guide || null) : null,
         errors: errs,
@@ -796,36 +851,76 @@ function QuestionsTab({
     e.target.value = ''
   }
 
+  /* -------------------------------------------------------------------------
+     FIXED IMPORT:
+     1. Sanitize every row (forces marks to int, correct_answer to null-or-A/B/C/D,
+        theory_answer_guide to null for objective rows). One bad cell can no longer
+        kill the batch.
+     2. Insert in chunks of INSERT_BATCH_SIZE (200). Prevents body-size limits and
+        saves partial progress if a later chunk fails.
+     ------------------------------------------------------------------------- */
   async function confirmImport() {
     if (!preview) return
     const valid = preview.rows.filter((r) => r.errors.length === 0)
     if (valid.length === 0) return
 
     setImporting(true)
-    const payload = valid.map((r) => ({
-      exam_id: examId,
-      type: r.type,
-      question_text: r.question_text,
-      option_a: r.option_a || null,
-      option_b: r.option_b || null,
-      option_c: r.option_c || null,
-      option_d: r.option_d || null,
-      correct_answer: r.correct_answer,
-      marks: r.marks,
-      theory_answer_guide: r.theory_answer_guide,
-    }))
 
-    const { error } = await supabase.from('cbt_questions').insert(payload)
+    // ── 1. Sanitize ──
+    const cleaned: SanitizedQuestion[] = valid
+      .map((r) =>
+        sanitizeQuestionRow(
+          {
+            type: r.type,
+            question_text: r.question_text,
+            option_a: r.option_a,
+            option_b: r.option_b,
+            option_c: r.option_c,
+            option_d: r.option_d,
+            correct_answer: r.correct_answer,
+            marks: r.marks,
+            theory_answer_guide: r.theory_answer_guide,
+          },
+          examId
+        )
+      )
+      .filter((r) => r.question_text.length > 0)
+
+    if (cleaned.length === 0) {
+      setImporting(false)
+      showToast('No valid questions to import.', 'error')
+      return
+    }
+
+    // ── 2. Chunked insert ──
+    let inserted = 0
+    for (let i = 0; i < cleaned.length; i += INSERT_BATCH_SIZE) {
+      const batch = cleaned.slice(i, i + INSERT_BATCH_SIZE)
+      const { error } = await supabase.from('cbt_questions').insert(batch)
+
+      if (error) {
+        setImporting(false)
+        const batchNo = Math.floor(i / INSERT_BATCH_SIZE) + 1
+        showToast(
+          `Insert failed at batch ${batchNo} (${error.message}). ` +
+          `${inserted} question(s) already saved — re-upload the rest.`,
+          'error'
+        )
+        onReload()
+        return
+      }
+      inserted += batch.length
+    }
+
     setImporting(false)
 
-    if (error) { showToast(`Insert failed: ${error.message}`, 'error'); return }
-
-    const hasTheory = valid.some((r) => r.type === 'theory')
+    // ── 3. Flip has_theory if needed ──
+    const hasTheory = cleaned.some((r) => r.type === 'theory')
     if (hasTheory && !exam.has_theory) {
       await supabase.from('cbt_exams').update({ has_theory: true }).eq('id', examId)
     }
 
-    showToast(`${valid.length} question(s) imported.`)
+    showToast(`${inserted} question(s) imported successfully.`)
     setPreview(null)
     onReload()
   }
