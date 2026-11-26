@@ -2,7 +2,7 @@
 
 /* ============================================================================
    THE TRUSTWORTHY SCHOOLS — TEACHER PORTAL
-   v6.0 — Server-side Auth, Term Summary Attendance, CBT Excel Export
+   v6.1 — Session default 2026/2027 (aligned with admin)
    ============================================================================ */
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
@@ -190,7 +190,7 @@ export default function TeacherPortal() {
   const [activeTab, setActiveTab] = useState<'attendance' | 'scores' | 'behavioural' | 'cbt' | 'news'>('attendance')
 
   const [currentTerm, setCurrentTerm] = useState<Term>('First Term')
-  const [currentSession, setCurrentSession] = useState('2025/2026')
+  const [currentSession, setCurrentSession] = useState('2026/2027')   // ← aligned with admin
 
   const [toasts, setToasts] = useState<Toast[]>([])
   const showToast = useCallback((msg: string, tone: Toast['tone'] = 'success') => {
@@ -540,7 +540,7 @@ function AttendanceTab({
         const found = sums?.find((a: any) => a.student_id === s.id)
         map[s.id] = {
           present: found?.days_present?.toString() || '',
-          total: found?.total_days?.toString() || '120', // Default to 120 for convenience
+          total: found?.total_days?.toString() || '120',
         }
       })
       setSummaryRecords(map)
@@ -604,7 +604,7 @@ function AttendanceTab({
     const next: Record<string, { present: string; total: string }> = {}
     students.forEach((s) => {
       const current = summaryRecords[s.id] || { present: '', total: '120' }
-      next[s.id] = { ...current, total: '120' } // Fill total with 120
+      next[s.id] = { ...current, total: '120' }
     })
     setSummaryRecords(next)
     showToast('Filled total days with 120', 'info')
