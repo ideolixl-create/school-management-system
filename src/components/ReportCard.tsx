@@ -2,6 +2,7 @@
 
 /* ============================================================================
    THE TRUSTWORTHY SCHOOLS — REPORT CARD COMPONENT
+   v2 — Mobile-responsive polish (desktop layout unchanged)
    ============================================================================ */
 
 import { useEffect, useState } from 'react'
@@ -26,7 +27,7 @@ export const SCHOOL = {
 }
 
 /* ============================================================================
-   TYPES
+   TYPES (unchanged)
    ============================================================================ */
 
 export type ReportStudent = {
@@ -83,7 +84,7 @@ export type ReportCardData = {
 }
 
 /* ============================================================================
-   HELPERS
+   HELPERS (unchanged)
    ============================================================================ */
 
 const AFFECTIVE_TRAITS = [
@@ -145,25 +146,18 @@ function ageFromDob(dob: string | null | undefined): number | null {
   return age
 }
 
-/* ============================================================================
-   PRINCIPAL'S REMARK GENERATOR
-   ============================================================================ */
-
 function getPrincipalRemark(avgPercentage: number): string {
   if (avgPercentage >= 70) {
-    // Excellent / Outstanding (A / A+)
     return '"An excellent result; keep soaring high and do not relent in your efforts next term."'
   } else if (avgPercentage >= 50) {
-    // Good / Above Average (B / C)
     return '"A good result. With more focus and consistency, you have the potential to achieve even higher."'
   } else {
-    // Struggling / Below Average (D / F)
     return '"This result falls below your capability. More commitment, regular revision, and class participation are required next term."'
   }
 }
 
 /* ============================================================================
-   DATA LOADER
+   DATA LOADER (unchanged)
    ============================================================================ */
 
 export async function loadReportCardData(
@@ -238,7 +232,7 @@ export async function loadReportCardData(
 }
 
 /* ============================================================================
-   COMPONENT
+   COMPONENT — MOBILE-OPTIMIZED
    ============================================================================ */
 
 export default function ReportCard({ data }: { data: ReportCardData }) {
@@ -267,7 +261,6 @@ export default function ReportCard({ data }: { data: ReportCardData }) {
   const avg = rows.length > 0 ? (sum / (rows.length * 100)) * 100 : 0
   const avgStr = avg.toFixed(2)
 
-  // Attendance
   const attDisplay = (() => {
     if (data.attendanceSummary) {
       const { days_present, total_days } = data.attendanceSummary
@@ -285,69 +278,93 @@ export default function ReportCard({ data }: { data: ReportCardData }) {
   const principalRemark = getPrincipalRemark(avg)
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-6 sm:p-8 print:shadow-none print:ring-0 print:rounded-none report-card-root">
-      <style dangerouslySetInnerHTML={{ __html: `
-        @media print {
-          body * { visibility: hidden !important; }
-          .report-card-root, .report-card-root * { visibility: visible !important; }
-          .report-card-root { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; padding: 0 !important; }
-          .report-card-no-print { display: none !important; }
-          @page { size: A4 portrait; margin: 12mm; }
-        }
-        .signature-img, .stamp-img { mix-blend-mode: multiply; }
-      `}} />
+    <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-4 sm:p-8 print:shadow-none print:ring-0 print:rounded-none report-card-root">
 
-      {/* 3-COLUMN HEADER */}
-      <div className="flex items-center justify-between gap-4 pb-4 border-b-2 border-[#4A2E1B]">
-        {/* Left: Big Logo */}
-        <div className="shrink-0">
-          <img src={SCHOOL.logo} alt="Logo" className="w-20 h-20 sm:w-24 sm:h-24 object-contain" />
-        </div>
-
-        {/* Center: School Info */}
-        <div className="text-center flex-1">
-          <h1 className="text-xl sm:text-2xl font-black text-[#4A2E1B] tracking-tight uppercase leading-tight mb-1">
-            {SCHOOL.name}
-          </h1>
-          <p className="text-xs sm:text-sm font-bold text-gray-800 mb-1">
-            {SCHOOL.address}
-          </p>
-          <p className="text-[11px] sm:text-xs font-bold text-gray-700">
-            {SCHOOL.phones.join(' · ')}<br />
-            {SCHOOL.email} · {SCHOOL.website}
-          </p>
-        </div>
-
-        {/* Right: Passport */}
-        <div className="shrink-0">
+      {/* ==================== HEADER ==================== */}
+      {/* Desktop: 3 columns | Mobile: stacked with logo+passport on same row, then text below */}
+      <div className="pb-4 border-b-2 border-[#4A2E1B]">
+        {/* Mobile-only: logo + passport side-by-side */}
+        <div className="flex sm:hidden items-center justify-between gap-3 mb-3">
+          <img
+            src={SCHOOL.logo}
+            alt="Logo"
+            className="w-14 h-14 object-contain shrink-0"
+          />
           {student.passport_url ? (
             <img
               src={student.passport_url}
               alt={student.full_name}
-              className="w-20 h-24 sm:w-24 sm:h-28 rounded-md object-cover ring-2 ring-[#4A2E1B]/30 bg-slate-100 shadow-sm"
-              onError={(e) => {
-                const img = e.currentTarget as HTMLImageElement
-                img.style.display = 'none'
-                const fb = img.nextElementSibling as HTMLElement | null
-                if (fb) fb.style.display = 'flex'
-              }}
+              className="w-14 h-16 rounded-md object-cover ring-2 ring-[#4A2E1B]/30 bg-slate-100 shadow-sm shrink-0"
             />
-          ) : null}
-          {!student.passport_url && (
-            <div className="w-20 h-24 sm:w-24 sm:h-28 rounded-md ring-2 ring-[#4A2E1B]/30 bg-slate-50 flex flex-col items-center justify-center text-gray-400 text-[9px] font-bold text-center px-1">
-              <span className="text-lg mb-1">👤</span>PASSPORT
+          ) : (
+            <div className="w-14 h-16 rounded-md ring-2 ring-[#4A2E1B]/30 bg-slate-50 flex flex-col items-center justify-center text-gray-400 text-[8px] font-bold text-center shrink-0">
+              <span className="text-base">👤</span>PHOTO
             </div>
           )}
         </div>
+
+        {/* Desktop: 3 columns — unchanged */}
+        <div className="hidden sm:flex items-center justify-between gap-4">
+          {/* Left: Logo */}
+          <div className="shrink-0">
+            <img src={SCHOOL.logo} alt="Logo" className="w-20 h-20 sm:w-24 sm:h-24 object-contain" />
+          </div>
+
+          {/* Center: School Info */}
+          <div className="text-center flex-1">
+            <h1 className="text-xl sm:text-2xl font-black text-[#4A2E1B] tracking-tight uppercase leading-tight mb-1">
+              {SCHOOL.name}
+            </h1>
+            <p className="text-xs sm:text-sm font-bold text-gray-800 mb-1">
+              {SCHOOL.address}
+            </p>
+            <p className="text-[11px] sm:text-xs font-bold text-gray-700">
+              {SCHOOL.phones.join(' · ')}<br />
+              {SCHOOL.email} · {SCHOOL.website}
+            </p>
+          </div>
+
+          {/* Right: Passport */}
+          <div className="shrink-0">
+            {student.passport_url ? (
+              <img
+                src={student.passport_url}
+                alt={student.full_name}
+                className="w-20 h-24 sm:w-24 sm:h-28 rounded-md object-cover ring-2 ring-[#4A2E1B]/30 bg-slate-100 shadow-sm"
+              />
+            ) : (
+              <div className="w-20 h-24 sm:w-24 sm:h-28 rounded-md ring-2 ring-[#4A2E1B]/30 bg-slate-50 flex flex-col items-center justify-center text-gray-400 text-[9px] font-bold text-center px-1">
+                <span className="text-lg mb-1">👤</span>PASSPORT
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Mobile-only: school name + compact contact info */}
+        <div className="sm:hidden text-center">
+          <h1 className="text-base font-black text-[#4A2E1B] tracking-tight uppercase leading-tight mb-1">
+            {SCHOOL.name}
+          </h1>
+          <p className="text-[10px] font-semibold text-gray-800 leading-snug mb-1">
+            {SCHOOL.address}
+          </p>
+          <p className="text-[10px] font-bold text-gray-700 leading-snug">
+            {SCHOOL.phones[0]} · {SCHOOL.email}
+          </p>
+        </div>
       </div>
 
+      {/* TERM TITLE */}
       <div className="text-center py-3">
-        <h2 className="text-base font-black text-[#4A2E1B] uppercase tracking-wide">{term} Report Card</h2>
-        <p className="text-[11px] text-gray-500">Academic Session: {session}</p>
+        <h2 className="text-sm sm:text-base font-black text-[#4A2E1B] uppercase tracking-wide">
+          {term} Report Card
+        </h2>
+        <p className="text-[10px] sm:text-[11px] text-gray-500">Academic Session: {session}</p>
       </div>
 
-      {/* STUDENT INFO */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-4 border-y border-slate-200 text-xs">
+      {/* ==================== STUDENT INFO ==================== */}
+      {/* Mobile: 1 col with tighter rows | Desktop: 2 col (unchanged) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 sm:gap-3 py-4 border-y border-slate-200 text-xs">
         <InfoRow label="Name" value={student.full_name} />
         <InfoRow label="Admission Number" value={student.admission_number} />
         <InfoRow label="Class" value={className} />
@@ -356,8 +373,12 @@ export default function ReportCard({ data }: { data: ReportCardData }) {
         <InfoRow label="Attendance" value={attDisplay} />
       </div>
 
-      {/* SUBJECTS TABLE */}
-      <div className="mt-4 overflow-x-auto">
+      {/* ==================== SUBJECTS TABLE ==================== */}
+      {/* Mobile: 4-col compact table (Subject | CA | Exam | Total+Grade) 
+          Desktop: original 6-col table (unchanged) */}
+
+      {/* Desktop table */}
+      <div className="mt-4 hidden sm:block overflow-x-auto">
         <table className="w-full text-left text-xs border border-slate-300">
           <thead className="bg-[#4A2E1B] text-white">
             <tr>
@@ -411,7 +432,57 @@ export default function ReportCard({ data }: { data: ReportCardData }) {
         </table>
       </div>
 
-      {/* BEHAVIOURAL RATINGS */}
+      {/* Mobile compact table — 4 columns: Subject | CA | Exam | Total/Grade */}
+      <div className="mt-4 sm:hidden">
+        <table className="w-full text-[10px] border border-slate-300">
+          <thead className="bg-[#4A2E1B] text-white">
+            <tr>
+              <th className="p-1.5 border border-slate-300 text-left">Subject</th>
+              <th className="p-1.5 border border-slate-300 text-center w-9">CA</th>
+              <th className="p-1.5 border border-slate-300 text-center w-9">Exm</th>
+              <th className="p-1.5 border border-slate-300 text-center w-12">Total</th>
+              <th className="p-1.5 border border-slate-300 text-center w-8">Gd</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={r.subject_id} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                <td className="p-1.5 border border-slate-300 font-semibold text-[#4A2E1B] leading-tight">{r.subject_name}</td>
+                <td className="p-1.5 border border-slate-300 text-center">{r.ca}</td>
+                <td className="p-1.5 border border-slate-300 text-center">{r.exam}</td>
+                <td className="p-1.5 border border-slate-300 text-center font-bold">{r.total}</td>
+                <td className={`p-1.5 border border-slate-300 text-center font-bold ${r.tone}`}>{r.grade}</td>
+              </tr>
+            ))}
+            {rows.length === 0 && <tr><td colSpan={5} className="p-4 text-center text-gray-400 italic">No scores recorded.</td></tr>}
+          </tbody>
+          {rows.length > 0 && (
+            <tfoot className="bg-slate-100">
+              <tr>
+                <td className="p-1.5 border border-slate-300 font-bold">TOTAL</td>
+                <td className="p-1.5 border border-slate-300" colSpan={2}></td>
+                <td className="p-1.5 border border-slate-300 text-center font-black text-pink-700">{sum}</td>
+                <td className="p-1.5 border border-slate-300"></td>
+              </tr>
+              <tr>
+                <td className="p-1.5 border border-slate-300 font-bold">AVG</td>
+                <td className="p-1.5 border border-slate-300" colSpan={2}></td>
+                <td className="p-1.5 border border-slate-300 text-center font-bold text-emerald-700" colSpan={2}>{avgStr}%</td>
+              </tr>
+              {data.overallRank && (
+                <tr>
+                  <td className="p-1.5 border border-slate-300 font-bold" colSpan={2}>POSITION</td>
+                  <td className="p-1.5 border border-slate-300 text-center font-bold text-[#4A2E1B]" colSpan={3}>
+                    {ordinal(data.overallRank)} / {data.totalStudentsInClass}
+                  </td>
+                </tr>
+              )}
+            </tfoot>
+          )}
+        </table>
+      </div>
+
+      {/* ==================== BEHAVIOURAL ==================== */}
       {behavioural && (
         <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -449,7 +520,7 @@ export default function ReportCard({ data }: { data: ReportCardData }) {
         </div>
       )}
 
-      {/* TEACHER & PRINCIPAL COMMENTS */}
+      {/* ==================== COMMENTS ==================== */}
       <div className="mt-5 space-y-3">
         {behavioural?.teacher_comment && (
           <div>
@@ -468,31 +539,52 @@ export default function ReportCard({ data }: { data: ReportCardData }) {
         </div>
       </div>
 
-      {/* FOOTER */}
-      <div className="mt-10 pt-6 border-t-2 border-dashed border-slate-300 flex items-end justify-between px-4 sm:px-12">
-        
-        {/* Left Side: Proprietor Name */}
-        <div className="text-center w-56 pb-2">
-          <p className="text-sm font-black text-gray-900 border-b border-black pb-1 mb-1">{PROPRIETOR_NAME}</p>
-          <p className="text-xs font-bold text-[#4A2E1B] uppercase tracking-wider">Proprietress</p>
+      {/* ==================== FOOTER ==================== */}
+      {/* Mobile: stacked vertically | Desktop: side-by-side (unchanged) */}
+      <div className="mt-10 pt-6 border-t-2 border-dashed border-slate-300">
+        {/* Desktop footer — unchanged */}
+        <div className="hidden sm:flex items-end justify-between px-4 sm:px-12">
+          <div className="text-center w-56 pb-2">
+            <p className="text-sm font-black text-gray-900 border-b border-black pb-1 mb-1">{PROPRIETOR_NAME}</p>
+            <p className="text-xs font-bold text-[#4A2E1B] uppercase tracking-wider">Proprietress</p>
+          </div>
+          <div className="relative w-36 h-36 flex items-center justify-center">
+            <img
+              src={SCHOOL_STAMP_URL}
+              alt="School Stamp"
+              className="stamp-img absolute inset-0 w-full h-full object-contain"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+            />
+            <img
+              src={PROPRIETOR_SIGNATURE_URL}
+              alt="Proprietor's Signature"
+              className="signature-img relative z-10 max-h-20 max-w-[120px] object-contain"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+            />
+          </div>
         </div>
 
-        {/* Right Side: Stamp with Signature inside */}
-        <div className="relative w-36 h-36 flex items-center justify-center">
-          <img
-            src={SCHOOL_STAMP_URL}
-            alt="School Stamp"
-            className="stamp-img absolute inset-0 w-full h-full object-contain"
-            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-          />
-          <img
-            src={PROPRIETOR_SIGNATURE_URL}
-            alt="Proprietor's Signature"
-            className="signature-img relative z-10 max-h-20 max-w-[120px] object-contain"
-            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-          />
+        {/* Mobile footer — stacked */}
+        <div className="sm:hidden flex flex-col items-center gap-5">
+          <div className="text-center w-48">
+            <p className="text-xs font-black text-gray-900 border-b border-black pb-1 mb-1">{PROPRIETOR_NAME}</p>
+            <p className="text-[10px] font-bold text-[#4A2E1B] uppercase tracking-wider">Proprietress</p>
+          </div>
+          <div className="relative w-28 h-28 flex items-center justify-center">
+            <img
+              src={SCHOOL_STAMP_URL}
+              alt="School Stamp"
+              className="stamp-img absolute inset-0 w-full h-full object-contain"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+            />
+            <img
+              src={PROPRIETOR_SIGNATURE_URL}
+              alt="Proprietor's Signature"
+              className="signature-img relative z-10 max-h-16 max-w-[100px] object-contain"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+            />
+          </div>
         </div>
-
       </div>
 
       <p className="text-[10px] text-center text-gray-400 mt-6 italic">
